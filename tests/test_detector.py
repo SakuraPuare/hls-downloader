@@ -20,10 +20,10 @@ class TestHLSDetector:
 
     def test_extract_url_pattern_simple(self, detector):
         """Test URL pattern extraction for simple format."""
-        url = "https://example.com/segments/1.ts"
+        url = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts"
         base_url, pattern, extension = detector._extract_url_pattern(url)
         
-        assert base_url == "https://example.com/segments/"
+        assert base_url == "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/"
         assert pattern == "{}.ts"
         assert extension == "ts"
 
@@ -66,11 +66,11 @@ class TestHLSDetector:
 
     def test_generate_segment_url_simple(self, detector):
         """Test segment URL generation for simple format."""
-        base_url = "https://example.com/segments/"
+        base_url = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/"
         pattern = "{}.ts"
         
         url = detector._generate_segment_url(base_url, pattern, 5)
-        assert url == "https://example.com/segments/5.ts"
+        assert url == "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/5.ts"
 
     def test_generate_segment_url_zero_padded(self, detector):
         """Test segment URL generation for zero-padded format."""
@@ -97,7 +97,7 @@ class TestHLSDetector:
         with patch.object(detector, '_session') as mock_session:
             mock_session.head = AsyncMock(return_value=mock_response)
             
-            exists = await detector._check_segment_exists("https://example.com/segment1.ts")
+            exists = await detector._check_segment_exists("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts")
             assert exists is True
             mock_session.head.assert_called_once()
 
@@ -113,7 +113,7 @@ class TestHLSDetector:
             mock_session.head = AsyncMock(side_effect=httpx.HTTPStatusError("Not found", request=MagicMock(), response=mock_head_response))
             mock_session.get = AsyncMock(side_effect=httpx.HTTPStatusError("Not found", request=MagicMock(), response=mock_get_response))
             
-            exists = await detector._check_segment_exists("https://example.com/segment999.ts")
+            exists = await detector._check_segment_exists("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/999.ts")
             assert exists is False
 
     @pytest.mark.asyncio
@@ -126,7 +126,7 @@ class TestHLSDetector:
             mock_session.head = AsyncMock(side_effect=httpx.RequestError("HEAD not supported"))
             mock_session.get = AsyncMock(return_value=mock_get_response)
             
-            exists = await detector._check_segment_exists("https://example.com/segment1.ts")
+            exists = await detector._check_segment_exists("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts")
             assert exists is True
 
     @pytest.mark.asyncio
@@ -136,17 +136,17 @@ class TestHLSDetector:
             mock_session.head = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
             mock_session.get = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
             
-            exists = await detector._check_segment_exists("https://example.com/segment1.ts")
+            exists = await detector._check_segment_exists("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts")
             assert exists is False
 
     @pytest.mark.asyncio
     async def test_batch_check_segments(self, detector):
         """Test batch segment existence checking."""
         urls = [
-            "https://example.com/segment1.ts",
-            "https://example.com/segment2.ts",
-            "https://example.com/segment3.ts",
-            "https://example.com/segment4.ts",
+            "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts",
+            "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/2.ts",
+            "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/3.ts",
+            "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/4.ts",
         ]
         
         # Mock the _check_segment_exists method to return specific results
@@ -160,7 +160,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_find_upper_bound_small_range(self, detector):
         """Test finding upper bound for small segment range."""
-        base_url = "https://example.com/segments/"
+        base_url = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/"
         pattern = "{}.ts"
         
         def mock_check_exists(url):
@@ -177,7 +177,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_find_upper_bound_no_segments(self, detector):
         """Test finding upper bound when no segments exist."""
-        base_url = "https://example.com/segments/"
+        base_url = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/"
         pattern = "{}.ts"
         
         with patch.object(detector, '_check_segment_exists') as mock_check:
@@ -189,7 +189,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_binary_search_max_segment(self, detector):
         """Test binary search for maximum segment."""
-        base_url = "https://example.com/segments/"
+        base_url = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/"
         pattern = "{}.ts"
         
         def mock_check_exists(url):
@@ -245,7 +245,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_detect_segments_success(self, detector):
         """Test successful segment detection."""
-        url_template = "https://example.com/segments/1.ts"
+        url_template = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts"
         
         with patch.object(detector, '_binary_search_max_segment') as mock_search:
             mock_search.return_value = 5
@@ -256,7 +256,7 @@ class TestHLSDetector:
                 assert len(segments) == 5
                 for i, segment in enumerate(segments, 1):
                     assert isinstance(segment, SegmentInfo)
-                    assert segment.url == f"https://example.com/segments/{i}.ts"
+                    assert segment.url == f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts"
                     assert segment.index == i
                     assert segment.filename == f"segment_{i:06d}.ts"
                     assert segment.downloaded is False
@@ -264,7 +264,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_detect_segments_no_segments(self, detector):
         """Test segment detection when no segments exist."""
-        url_template = "https://example.com/segments/1.ts"
+        url_template = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts"
         
         with patch.object(detector, '_binary_search_max_segment') as mock_search:
             mock_search.return_value = 0
@@ -284,19 +284,19 @@ class TestHLSDetector:
     async def test_detect_segments_without_context_manager(self, detector):
         """Test segment detection without async context manager."""
         with pytest.raises(RuntimeError, match="Detector must be used as async context manager"):
-            await detector.detect_segments("https://example.com/segment1.ts")
+            await detector.detect_segments("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts")
 
     @pytest.mark.asyncio
     async def test_detect_segment_range_success(self, detector):
         """Test successful segment range detection."""
-        url_template = "https://example.com/segments/1.ts"
+        url_template = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts"
         
         with patch.object(detector, 'detect_segments') as mock_detect:
             # Mock 10 segments
             mock_segments = []
             for i in range(1, 11):
                 segment = SegmentInfo(
-                    url=f"https://example.com/segments/{i}.ts",
+                    url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                     index=i,
                     filename=f"segment_{i:06d}.ts"
                 )
@@ -310,7 +310,7 @@ class TestHLSDetector:
     @pytest.mark.asyncio
     async def test_detect_segment_range_no_segments(self, detector):
         """Test segment range detection when no segments exist."""
-        url_template = "https://example.com/segments/1.ts"
+        url_template = "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts"
         
         with patch.object(detector, 'detect_segments') as mock_detect:
             mock_detect.return_value = []
@@ -333,8 +333,8 @@ class TestHLSDetector:
     def test_url_pattern_variations(self, detector):
         """Test various URL pattern formats."""
         test_cases = [
-            ("https://example.com/1.ts", "https://example.com/", "{}.ts", "ts"),
-            ("https://example.com/001.ts", "https://example.com/", "{:03d}.ts", "ts"),
+            ("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts", "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/", "{}.ts", "ts"),
+            ("https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/001.ts", "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/", "{:03d}.ts", "ts"),
             ("https://example.com/segment1.ts", "https://example.com/", "segment{}.ts", "ts"),
             ("https://example.com/seg_001.ts", "https://example.com/", "seg_{:03d}.ts", "ts"),
             ("https://example.com/video/chunk_001_hd.ts", "https://example.com/video/", "chunk_{:03d}_hd.ts", "ts"),

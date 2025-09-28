@@ -32,17 +32,17 @@ class TestAsyncDownloader:
         """Create sample segment information for testing."""
         return [
             SegmentInfo(
-                url="https://example.com/segment1.ts",
+                url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts",
                 index=1,
                 filename="segment1.ts"
             ),
             SegmentInfo(
-                url="https://example.com/segment2.ts",
+                url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/2.ts",
                 index=2,
                 filename="segment2.ts"
             ),
             SegmentInfo(
-                url="https://example.com/segment3.ts",
+                url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/3.ts",
                 index=3,
                 filename="segment3.ts"
             )
@@ -170,7 +170,7 @@ class TestAsyncDownloader:
     async def test_download_single_segment_success(self, config, temp_dir):
         """Test successful download of a single segment."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts",
             index=1,
             filename="test.ts"
         )

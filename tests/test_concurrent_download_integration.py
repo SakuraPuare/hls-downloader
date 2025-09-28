@@ -31,7 +31,7 @@ class TestConcurrentDownloadIntegration:
         """Create a large list of segments for testing concurrency."""
         return [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
@@ -144,7 +144,7 @@ class TestConcurrentDownloadIntegration:
         
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
@@ -200,7 +200,7 @@ class TestConcurrentDownloadIntegration:
         """Test concurrent download handling of mixed success/failure scenarios."""
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
@@ -247,7 +247,7 @@ class TestConcurrentDownloadIntegration:
         """Test queue management behavior when downloads are cancelled."""
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
@@ -296,7 +296,7 @@ class TestConcurrentDownloadIntegration:
         """Test accuracy of performance metrics collection."""
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
@@ -364,7 +364,7 @@ class TestConcurrentDownloadIntegration:
         
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i:03d}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{i}.ts",
                 index=i,
                 filename=f"segment{i:03d}.ts"
             )
