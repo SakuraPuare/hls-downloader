@@ -1,28 +1,533 @@
 """Download manager for coordinating HLS download process."""
 
-from typing import Optional
+import asyncio
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-from .models import DownloadConfig
+from .detector import HLSDetector
+from .downloader import AsyncDownloader
+from .merger import VideoMerger, VideoMergerError, FFmpegNotFoundError
+from .progress_display import ProgressDisplay
+from .models import DownloadConfig, SegmentInfo, DownloadStats
+from .error_handler import ErrorHandler, DownloadError
+
+
+logger = logging.getLogger(__name__)
+
+
+class DownloadManagerError(Exception):
+    """Base exception for download manager errors."""
+    pass
+
+
+class ConfigurationError(DownloadManagerError):
+    """Raised when configuration is invalid."""
+    pass
 
 
 class DownloadManager:
     """Coordinates the entire HLS download process."""
 
     def __init__(self, config: Optional[DownloadConfig] = None):
-        """Initialize download manager with configuration."""
+        """Initialize download manager with configuration.
+        
+        Args:
+            config: Download configuration. If None, uses default configuration.
+        """
         self.config = config or DownloadConfig()
+        self._validate_config(self.config)
+        
+        # Initialize components
+        self._detector: Optional[HLSDetector] = None
+        self._downloader: Optional[AsyncDownloader] = None
+        self._merger: Optional[VideoMerger] = None
+        self._progress_display: Optional[ProgressDisplay] = None
+        
+        # Download state
+        self._segments: List[SegmentInfo] = []
+        self._download_stats: Optional[DownloadStats] = None
+        self._output_directory: Optional[Path] = None
+        self._segments_directory: Optional[Path] = None
+        
+        logger.info(f"DownloadManager initialized with config: {self.config}")
 
-    async def download_hls(self, url: str, output_dir: str) -> None:
-        """Download HLS stream to specified directory."""
-        # Implementation will be added in later tasks
-        pass
+    async def download_hls(
+        self, 
+        url: str, 
+        output_dir: str, 
+        output_filename: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Download HLS stream to specified directory.
+        
+        Args:
+            url: HLS segment URL template (e.g., "http://example.com/segment1.ts")
+            output_dir: Directory to save the downloaded video
+            output_filename: Optional custom filename for output video
+            
+        Returns:
+            Dictionary with download results and statistics
+            
+        Raises:
+            DownloadManagerError: If download process fails
+            ConfigurationError: If configuration is invalid
+        """
+        if not url or not url.startswith(('http://', 'https://')):
+            raise DownloadManagerError("Invalid URL provided")
+        
+        if not output_dir:
+            raise DownloadManagerError("Output directory cannot be empty")
+        
+        logger.info(f"Starting HLS download from {url} to {output_dir}")
+        
+        try:
+            # Setup output directory structure
+            await self._setup_output_directory(output_dir)
+            
+            # Initialize components
+            await self._initialize_components()
+            
+            # Phase 1: Detect segments
+            logger.info("Phase 1: Detecting available segments...")
+            segments = await self._detect_segments(url)
+            
+            if not segments:
+                raise DownloadManagerError("No segments found for the provided URL")
+            
+            logger.info(f"Found {len(segments)} segments to download")
+            
+            # Phase 2: Download segments
+            logger.info("Phase 2: Downloading segments...")
+            download_results = await self._download_segments(segments)
+            
+            # Phase 3: Merge segments (if enabled)
+            output_file_path = None
+            if self.config.auto_merge:
+                logger.info("Phase 3: Merging segments...")
+                output_file_path = await self._merge_segments(output_filename)
+            
+            # Generate final results
+            results = self._generate_results(download_results, output_file_path)
+            
+            logger.info("HLS download completed successfully")
+            return results
+            
+        except Exception as e:
+            logger.error(f"HLS download failed: {e}")
+            if isinstance(e, (DownloadManagerError, ConfigurationError)):
+                raise
+            else:
+                raise DownloadManagerError(f"Download failed: {str(e)}") from e
+        
+        finally:
+            # Cleanup components
+            await self._cleanup_components()
+
+    async def _initialize_components(self) -> None:
+        """Initialize all download components."""
+        logger.debug("Initializing download components...")
+        
+        # Initialize detector
+        self._detector = HLSDetector(
+            timeout=self.config.timeout,
+            max_concurrent_checks=min(self.config.max_concurrent, 20)
+        )
+        
+        # Initialize downloader
+        self._downloader = AsyncDownloader(self.config)
+        
+        # Initialize merger (check ffmpeg availability)
+        try:
+            self._merger = VideoMerger()
+            logger.info("Video merger initialized successfully")
+        except FFmpegNotFoundError as e:
+            if self.config.auto_merge:
+                logger.error(f"Auto-merge enabled but ffmpeg not available: {e}")
+                raise DownloadManagerError(f"ffmpeg required for auto-merge: {e}") from e
+            else:
+                logger.warning(f"ffmpeg not available, auto-merge disabled: {e}")
+                self._merger = None
+        
+        # Initialize progress display
+        self._progress_display = ProgressDisplay()
+        
+        logger.debug("All components initialized successfully")
+
+    async def _cleanup_components(self) -> None:
+        """Cleanup all download components."""
+        logger.debug("Cleaning up download components...")
+        
+        # Cleanup progress display
+        if self._progress_display:
+            self._progress_display.close_all_progress()
+            self._progress_display = None
+        
+        # Cleanup downloader
+        if self._downloader:
+            # AsyncDownloader cleanup is handled by context manager
+            self._downloader = None
+        
+        # Cleanup detector
+        if self._detector:
+            # HLSDetector cleanup is handled by context manager
+            self._detector = None
+        
+        # Merger doesn't need explicit cleanup
+        self._merger = None
+        
+        logger.debug("Component cleanup completed")
+
+    async def _detect_segments(self, url: str) -> List[SegmentInfo]:
+        """Detect available HLS segments.
+        
+        Args:
+            url: HLS segment URL template
+            
+        Returns:
+            List of detected segment information
+        """
+        if not self._detector:
+            raise DownloadManagerError("Detector not initialized")
+        
+        async with self._detector:
+            segments = await self._detector.detect_segments(url)
+            
+            # Update segments with proper file paths
+            for segment in segments:
+                segment.filename = f"segment_{segment.index:06d}.ts"
+            
+            self._segments = segments
+            return segments
+
+    async def _download_segments(self, segments: List[SegmentInfo]) -> List[SegmentInfo]:
+        """Download all segments with progress tracking.
+        
+        Args:
+            segments: List of segments to download
+            
+        Returns:
+            List of download results
+        """
+        if not self._downloader or not self._progress_display:
+            raise DownloadManagerError("Downloader or progress display not initialized")
+        
+        # Setup progress display
+        main_progress = self._progress_display.create_main_progress(
+            total=len(segments),
+            desc="下载HLS切片"
+        )
+        
+        # Initialize download statistics
+        self._download_stats = DownloadStats(
+            total_segments=len(segments),
+            start_time=time.time()
+        )
+        
+        try:
+            # Download segments using async context manager
+            async with self._downloader:
+                results = await self._downloader.download_segments(
+                    segments, 
+                    str(self._segments_directory)
+                )
+            
+            # Update final statistics
+            successful_downloads = [s for s in results if s.downloaded]
+            failed_downloads = [s for s in results if not s.downloaded]
+            
+            self._download_stats.downloaded_segments = len(successful_downloads)
+            self._download_stats.failed_segments = len(failed_downloads)
+            self._download_stats.downloaded_bytes = sum(
+                s.size or 0 for s in successful_downloads
+            )
+            
+            elapsed_time = time.time() - self._download_stats.start_time
+            self._download_stats.update_speed(elapsed_time)
+            
+            # Update progress display with final stats
+            self._progress_display.update_stats(self._download_stats)
+            
+            logger.info(
+                f"Download completed: {len(successful_downloads)}/{len(segments)} "
+                f"segments successful"
+            )
+            
+            if failed_downloads:
+                logger.warning(f"{len(failed_downloads)} segments failed to download")
+                for failed_segment in failed_downloads:
+                    logger.warning(f"Failed segment: {failed_segment.index} - {failed_segment.url}")
+            
+            return results
+            
+        except Exception as e:
+            if self._progress_display:
+                self._progress_display.set_error_status(f"下载失败: {str(e)}")
+            raise
+
+    async def _merge_segments(self, output_filename: Optional[str] = None) -> Optional[str]:
+        """Merge downloaded segments into a single video file.
+        
+        Args:
+            output_filename: Optional custom filename for output video
+            
+        Returns:
+            Path to the merged video file, or None if merge failed/disabled
+        """
+        if not self.config.auto_merge or not self._merger:
+            logger.info("Auto-merge disabled or merger not available")
+            return None
+        
+        if not self._segments_directory or not self._output_directory:
+            raise DownloadManagerError("Output directories not initialized")
+        
+        # Generate output filename
+        if not output_filename:
+            timestamp = int(time.time())
+            output_filename = f"hls_video_{timestamp}.{self.config.output_format}"
+        elif not output_filename.endswith(f".{self.config.output_format}"):
+            output_filename = f"{output_filename}.{self.config.output_format}"
+        
+        output_file_path = self._output_directory / output_filename
+        
+        try:
+            # Create progress callback for merge operation
+            def merge_progress_callback(seconds: float):
+                if self._progress_display:
+                    # Update progress display with merge status
+                    pass  # Could implement merge progress display here
+            
+            # Perform merge
+            await self._merger.merge_segments(
+                segment_dir=str(self._segments_directory),
+                output_file=str(output_file_path),
+                cleanup_segments=self.config.cleanup_segments,
+                progress_callback=merge_progress_callback
+            )
+            
+            logger.info(f"Video merged successfully: {output_file_path}")
+            return str(output_file_path)
+            
+        except VideoMergerError as e:
+            logger.error(f"Video merge failed: {e}")
+            # Don't raise exception, just return None to indicate merge failure
+            return None
+
+    def _generate_results(
+        self, 
+        download_results: List[SegmentInfo], 
+        output_file_path: Optional[str]
+    ) -> Dict[str, Any]:
+        """Generate final download results summary.
+        
+        Args:
+            download_results: Results from segment downloads
+            output_file_path: Path to merged video file (if any)
+            
+        Returns:
+            Dictionary with comprehensive download results
+        """
+        successful_downloads = [s for s in download_results if s.downloaded]
+        failed_downloads = [s for s in download_results if not s.downloaded]
+        
+        results = {
+            "success": len(failed_downloads) == 0,
+            "total_segments": len(download_results),
+            "successful_segments": len(successful_downloads),
+            "failed_segments": len(failed_downloads),
+            "output_directory": str(self._output_directory) if self._output_directory else None,
+            "segments_directory": str(self._segments_directory) if self._segments_directory else None,
+            "merged_video_path": output_file_path,
+            "download_stats": {
+                "total_bytes": sum(s.size or 0 for s in successful_downloads),
+                "average_speed": self._download_stats.average_speed if self._download_stats else 0.0,
+                "total_time": time.time() - (self._download_stats.start_time if self._download_stats else time.time()),
+            },
+            "configuration": {
+                "max_concurrent": self.config.max_concurrent,
+                "max_retries": self.config.max_retries,
+                "auto_merge": self.config.auto_merge,
+                "cleanup_segments": self.config.cleanup_segments,
+                "output_format": self.config.output_format,
+            }
+        }
+        
+        # Add error information if there were failures
+        if failed_downloads:
+            results["failed_segment_details"] = [
+                {
+                    "index": s.index,
+                    "url": s.url,
+                    "filename": s.filename
+                }
+                for s in failed_downloads
+            ]
+        
+        # Add downloader error summary if available
+        if self._downloader:
+            error_summary = self._downloader.get_error_summary()
+            if error_summary.get("total_errors", 0) > 0:
+                results["error_summary"] = error_summary
+        
+        return results
 
     async def _setup_output_directory(self, output_dir: str) -> None:
-        """Setup output directory for downloads."""
-        # Implementation will be added in later tasks
-        pass
+        """Setup output directory structure for downloads.
+        
+        Args:
+            output_dir: Base output directory path
+            
+        Raises:
+            DownloadManagerError: If directory setup fails
+        """
+        try:
+            # Create main output directory
+            self._output_directory = Path(output_dir).resolve()
+            self._output_directory.mkdir(parents=True, exist_ok=True)
+            
+            # Create subdirectory for segments
+            self._segments_directory = self._output_directory / "segments"
+            self._segments_directory.mkdir(parents=True, exist_ok=True)
+            
+            # Verify directories are writable
+            test_file = self._output_directory / ".write_test"
+            try:
+                test_file.write_text("test")
+                test_file.unlink()
+            except (OSError, PermissionError) as e:
+                raise DownloadManagerError(f"Output directory not writable: {e}")
+            
+            logger.info(f"Output directory setup completed: {self._output_directory}")
+            logger.debug(f"Segments directory: {self._segments_directory}")
+            
+        except Exception as e:
+            if isinstance(e, DownloadManagerError):
+                raise
+            else:
+                raise DownloadManagerError(f"Failed to setup output directory: {e}") from e
 
     def _validate_config(self, config: DownloadConfig) -> None:
-        """Validate download configuration."""
-        # Implementation will be added in later tasks
-        pass
+        """Validate download configuration.
+        
+        Args:
+            config: Configuration to validate
+            
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        try:
+            # Additional validation specific to download manager
+            if config.max_concurrent <= 0:
+                raise ConfigurationError("max_concurrent must be greater than 0")
+            
+            if config.max_concurrent > 100:
+                logger.warning(
+                    f"High concurrency setting ({config.max_concurrent}) may cause "
+                    "performance issues or rate limiting"
+                )
+            
+            if config.timeout <= 0:
+                raise ConfigurationError("timeout must be greater than 0")
+            
+            if config.chunk_size <= 0:
+                raise ConfigurationError("chunk_size must be greater than 0")
+            
+            # Use the built-in validation from DownloadConfig
+            if not config.validate():
+                raise ConfigurationError("Configuration validation failed")
+            
+            logger.debug("Configuration validation passed")
+            
+        except ValueError as e:
+            raise ConfigurationError(f"Invalid configuration: {e}") from e
+
+    def get_download_stats(self) -> Optional[DownloadStats]:
+        """Get current download statistics.
+        
+        Returns:
+            Current download statistics, or None if download not started
+        """
+        return self._download_stats
+
+    def get_segments_info(self) -> List[SegmentInfo]:
+        """Get information about detected segments.
+        
+        Returns:
+            List of segment information
+        """
+        return self._segments.copy()
+
+    def update_config(self, **kwargs) -> None:
+        """Update configuration parameters.
+        
+        Args:
+            **kwargs: Configuration parameters to update
+            
+        Raises:
+            ConfigurationError: If updated configuration is invalid
+        """
+        # Create new config with updated values
+        config_dict = {
+            "max_concurrent": kwargs.get("max_concurrent", self.config.max_concurrent),
+            "max_retries": kwargs.get("max_retries", self.config.max_retries),
+            "timeout": kwargs.get("timeout", self.config.timeout),
+            "chunk_size": kwargs.get("chunk_size", self.config.chunk_size),
+            "auto_merge": kwargs.get("auto_merge", self.config.auto_merge),
+            "cleanup_segments": kwargs.get("cleanup_segments", self.config.cleanup_segments),
+            "output_format": kwargs.get("output_format", self.config.output_format),
+        }
+        
+        try:
+            new_config = DownloadConfig(**config_dict)
+            self._validate_config(new_config)
+        except ValueError as e:
+            raise ConfigurationError(f"Invalid configuration update: {e}") from e
+        
+        old_config = self.config
+        self.config = new_config
+        
+        logger.info(f"Configuration updated from {old_config} to {new_config}")
+
+    async def resume_download(
+        self, 
+        url: str, 
+        output_dir: str, 
+        output_filename: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Resume a previously interrupted download.
+        
+        Args:
+            url: Original HLS segment URL template
+            output_dir: Directory containing partial download
+            output_filename: Optional custom filename for output video
+            
+        Returns:
+            Dictionary with download results and statistics
+            
+        Note:
+            This method will detect already downloaded segments and skip them.
+        """
+        logger.info(f"Resuming HLS download from {url} in {output_dir}")
+        
+        # Check if output directory exists
+        output_path = Path(output_dir)
+        if not output_path.exists():
+            logger.warning("Output directory doesn't exist, starting fresh download")
+            return await self.download_hls(url, output_dir, output_filename)
+        
+        segments_path = output_path / "segments"
+        if not segments_path.exists():
+            logger.warning("Segments directory doesn't exist, starting fresh download")
+            return await self.download_hls(url, output_dir, output_filename)
+        
+        # Get list of existing segment files
+        existing_files = set()
+        for file_path in segments_path.iterdir():
+            if file_path.is_file() and file_path.suffix == '.ts':
+                existing_files.add(file_path.name)
+        
+        logger.info(f"Found {len(existing_files)} existing segment files")
+        
+        # Proceed with normal download - the downloader will handle resume logic
+        return await self.download_hls(url, output_dir, output_filename)
