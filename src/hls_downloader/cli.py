@@ -2,67 +2,241 @@
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 from .download_manager import DownloadManager
 from .models import DownloadConfig
 
 
+def load_config_file(config_path: Path) -> Dict[str, Any]:
+    """Load configuration from JSON file."""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"Error parsing config file {config_path}: {e}", file=sys.stderr)
+        return {}
+    except Exception as e:
+        print(f"Error reading config file {config_path}: {e}", file=sys.stderr)
+        return {}
+
+
+def save_config_file(config_path: Path, config: Dict[str, Any]) -> bool:
+    """Save configuration to JSON file."""
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving config file {config_path}: {e}", file=sys.stderr)
+        return False
+
+
+def get_default_config_path() -> Path:
+    """Get default configuration file path."""
+    home = Path.home()
+    return home / '.hls_downloader' / 'config.json'
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser."""
     parser = argparse.ArgumentParser(
-        description="HLS Downloader - Download and merge HLS stream segments"
+        description="HLS Downloader - Download and merge HLS stream segments",
+        epilog="""
+Examples:
+  %(prog)s "https://example.com/segment{}.ts"
+  %(prog)s "https://example.com/video_{:03d}.ts" -o ./my_video -c 20
+  %(prog)s "https://example.com/part{}.ts" --no-merge --cleanup
+  %(prog)s --save-config  # Save current settings as default
+  %(prog)s --show-config  # Show current configuration
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
+    # Positional argument
     parser.add_argument(
         "url",
+        nargs='?',
         help="HLS segment URL template (e.g., 'https://example.com/segment{}.ts')",
     )
 
-    parser.add_argument(
-        "-o",
-        "--output",
+    # Output options
+    output_group = parser.add_argument_group('Output Options')
+    output_group.add_argument(
+        "-o", "--output",
         default="./downloads",
         help="Output directory for downloaded files (default: ./downloads)",
     )
+    output_group.add_argument(
+        "--format",
+        default="mp4",
+        choices=["mp4", "mkv", "avi", "mov", "ts"],
+        help="Output video format (default: mp4)",
+    )
 
-    parser.add_argument(
-        "-c",
-        "--concurrent",
+    # Download options
+    download_group = parser.add_argument_group('Download Options')
+    download_group.add_argument(
+        "-c", "--concurrent",
         type=int,
         default=10,
-        help="Maximum concurrent downloads (default: 10)",
+        metavar="N",
+        help="Maximum concurrent downloads (1-100, default: 10)",
     )
-
-    parser.add_argument(
-        "-r",
-        "--retries",
+    download_group.add_argument(
+        "-r", "--retries",
         type=int,
         default=3,
-        help="Maximum retry attempts (default: 3)",
+        metavar="N",
+        help="Maximum retry attempts (0-10, default: 3)",
     )
-
-    parser.add_argument(
+    download_group.add_argument(
         "--timeout",
         type=int,
         default=30,
-        help="Request timeout in seconds (default: 30)",
+        metavar="SECONDS",
+        help="Request timeout in seconds (1-300, default: 30)",
+    )
+    download_group.add_argument(
+        "--chunk-size",
+        type=int,
+        default=8192,
+        metavar="BYTES",
+        help="Download chunk size in bytes (default: 8192)",
     )
 
-    parser.add_argument(
-        "--no-merge", action="store_true", help="Skip automatic merging of segments"
+    # Processing options
+    process_group = parser.add_argument_group('Processing Options')
+    process_group.add_argument(
+        "--no-merge",
+        action="store_true",
+        help="Skip automatic merging of segments",
+    )
+    process_group.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Delete segment files after merging",
     )
 
-    parser.add_argument(
-        "--cleanup", action="store_true", help="Delete segment files after merging"
+    # Configuration options
+    config_group = parser.add_argument_group('Configuration Options')
+    config_group.add_argument(
+        "--config",
+        type=Path,
+        help="Path to configuration file (default: ~/.hls_downloader/config.json)",
+    )
+    config_group.add_argument(
+        "--save-config",
+        action="store_true",
+        help="Save current settings as default configuration",
+    )
+    config_group.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Show current configuration and exit",
     )
 
+    # Utility options
     parser.add_argument(
-        "--format", default="mp4", help="Output video format (default: mp4)"
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="HLS Downloader 1.0.0",
     )
 
     return parser
+
+
+def merge_config(base_config: Dict[str, Any], cli_args: argparse.Namespace) -> Dict[str, Any]:
+    """Merge configuration from file with CLI arguments."""
+    # CLI arguments take precedence over config file
+    merged = base_config.copy()
+    
+    # Map CLI arguments to config keys
+    arg_mapping = {
+        'concurrent': 'max_concurrent',
+        'retries': 'max_retries',
+        'timeout': 'timeout',
+        'chunk_size': 'chunk_size',
+        'format': 'output_format',
+        'no_merge': ('auto_merge', lambda x: not x),  # Invert the boolean
+        'cleanup': 'cleanup_segments',
+    }
+    
+    for cli_arg, config_key in arg_mapping.items():
+        if hasattr(cli_args, cli_arg):
+            value = getattr(cli_args, cli_arg)
+            if value is not None:
+                if isinstance(config_key, tuple):
+                    # Handle special cases like boolean inversion
+                    key, transform = config_key
+                    merged[key] = transform(value)
+                else:
+                    merged[config_key] = value
+    
+    return merged
+
+
+def validate_arguments(args: argparse.Namespace) -> bool:
+    """Validate command line arguments."""
+    errors = []
+    
+    # Validate concurrent downloads
+    if args.concurrent < 1 or args.concurrent > 100:
+        errors.append("Concurrent downloads must be between 1 and 100")
+    
+    # Validate retries
+    if args.retries < 0 or args.retries > 10:
+        errors.append("Retries must be between 0 and 10")
+    
+    # Validate timeout
+    if args.timeout < 1 or args.timeout > 300:
+        errors.append("Timeout must be between 1 and 300 seconds")
+    
+    # Validate chunk size
+    if args.chunk_size < 1 or args.chunk_size > 1024 * 1024:
+        errors.append("Chunk size must be between 1 and 1048576 bytes")
+    
+    # Validate URL format if provided
+    if args.url and '{}' not in args.url:
+        errors.append("URL must contain '{}' placeholder for segment numbers")
+    
+    if errors:
+        for error in errors:
+            print(f"Error: {error}", file=sys.stderr)
+        return False
+    
+    return True
+
+
+def show_config(config: DownloadConfig, config_path: Optional[Path] = None) -> None:
+    """Display current configuration."""
+    print("Current Configuration:")
+    print("=" * 50)
+    print(f"Max Concurrent Downloads: {config.max_concurrent}")
+    print(f"Max Retries: {config.max_retries}")
+    print(f"Timeout: {config.timeout} seconds")
+    print(f"Chunk Size: {config.chunk_size} bytes")
+    print(f"Auto Merge: {config.auto_merge}")
+    print(f"Cleanup Segments: {config.cleanup_segments}")
+    print(f"Output Format: {config.output_format}")
+    
+    if config_path:
+        print(f"\nConfig file: {config_path}")
+        if config_path.exists():
+            print("Status: Found")
+        else:
+            print("Status: Not found (using defaults)")
 
 
 async def main() -> None:
@@ -70,28 +244,84 @@ async def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
 
-    # Create download configuration from arguments
-    config = DownloadConfig(
-        max_concurrent=args.concurrent,
-        max_retries=args.retries,
-        timeout=args.timeout,
-        auto_merge=not args.no_merge,
-        cleanup_segments=args.cleanup,
-        output_format=args.format,
-    )
-
+    # Determine config file path
+    config_path = args.config if args.config else get_default_config_path()
+    
+    # Load configuration from file
+    file_config = load_config_file(config_path)
+    
+    # Merge file config with CLI arguments
+    merged_config = merge_config(file_config, args)
+    
+    # Create download configuration
+    try:
+        config = DownloadConfig(**merged_config)
+    except (TypeError, ValueError) as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Handle special commands
+    if args.show_config:
+        show_config(config, config_path)
+        return
+    
+    if args.save_config:
+        config_dict = {
+            'max_concurrent': config.max_concurrent,
+            'max_retries': config.max_retries,
+            'timeout': config.timeout,
+            'chunk_size': config.chunk_size,
+            'auto_merge': config.auto_merge,
+            'cleanup_segments': config.cleanup_segments,
+            'output_format': config.output_format,
+        }
+        if save_config_file(config_path, config_dict):
+            print(f"Configuration saved to {config_path}")
+        else:
+            print("Failed to save configuration", file=sys.stderr)
+            sys.exit(1)
+        return
+    
+    # Validate arguments
+    if not validate_arguments(args):
+        sys.exit(1)
+    
+    # URL is required for download
+    if not args.url:
+        print("Error: URL is required for download", file=sys.stderr)
+        parser.print_help()
+        sys.exit(1)
+    
     # Create output directory if it doesn't exist
     output_path = Path(args.output)
-    output_path.mkdir(parents=True, exist_ok=True)
+    try:
+        output_path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"Error creating output directory: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Initialize download manager and start download
     manager = DownloadManager(config)
 
     try:
+        if args.verbose:
+            print(f"Starting download with configuration:")
+            show_config(config)
+            print(f"\nDownloading from: {args.url}")
+            print(f"Output directory: {output_path}")
+            print("-" * 50)
+        
         await manager.download_hls(args.url, str(output_path))
         print("Download completed successfully!")
+        
+    except KeyboardInterrupt:
+        print("\nDownload interrupted by user", file=sys.stderr)
+        sys.exit(130)  # Standard exit code for SIGINT
     except Exception as e:
         print(f"Download failed: {e}", file=sys.stderr)
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
 
 
