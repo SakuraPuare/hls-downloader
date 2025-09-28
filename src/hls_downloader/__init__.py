@@ -6,12 +6,17 @@ __email__ = "team@hlsdownloader.dev"
 
 from .download_manager import DownloadManager
 from .detector import HLSDetector
+from .merger import VideoMerger, VideoMergerError, FFmpegNotFoundError, MergeError
 from .models import DownloadConfig, DownloadStats, SegmentInfo
 from .progress_display import ProgressDisplay, MultiThreadProgressWrapper
 
 __all__ = [
     "DownloadManager",
     "HLSDetector",
+    "VideoMerger",
+    "VideoMergerError",
+    "FFmpegNotFoundError",
+    "MergeError",
     "DownloadConfig",
     "SegmentInfo",
     "DownloadStats",
