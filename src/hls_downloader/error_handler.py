@@ -1,7 +1,6 @@
 """Error handling utilities for HLS downloader."""
 
 import asyncio
-import logging
 import random
 import time
 from enum import Enum
@@ -9,11 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
 
 import httpx
+from loguru import logger
 
 from .models import SegmentInfo
-
-
-logger = logging.getLogger(__name__)
 
 
 class ErrorType(Enum):
@@ -247,7 +244,7 @@ class ErrorHandler:
         # Prepare log context
         log_context = {
             "error_type": error.error_type.value,
-            "timestamp": error.timestamp,
+            "error_timestamp": error.timestamp,
             "error_message": str(error),
         }
         
@@ -264,16 +261,19 @@ class ErrorHandler:
         if context:
             log_context.update(context)
         
+        # Create bound logger with context
+        bound_logger = logger.bind(**log_context)
+        
         # Log with appropriate level based on error type
         if error.error_type in [ErrorType.NETWORK_ERROR, ErrorType.TIMEOUT_ERROR]:
-            logger.warning(f"Recoverable error: {error}", extra=log_context)
+            bound_logger.warning(f"Recoverable error: {error}")
         elif error.error_type == ErrorType.HTTP_ERROR:
             if isinstance(error, HTTPError) and error.status_code >= 500:
-                logger.warning(f"Server error: {error}", extra=log_context)
+                bound_logger.warning(f"Server error: {error}")
             else:
-                logger.error(f"Client error: {error}", extra=log_context)
+                bound_logger.error(f"Client error: {error}")
         else:
-            logger.error(f"Download error: {error}", extra=log_context)
+            bound_logger.error(f"Download error: {error}")
     
     def log_retry_attempt(
         self, 
@@ -290,17 +290,16 @@ class ErrorHandler:
             delay: Delay before this retry
             error: The error that triggered the retry
         """
-        logger.info(
+        logger.bind(
+            segment_url=segment.url,
+            segment_index=segment.index,
+            attempt=attempt,
+            max_retries=self.max_retries,
+            delay=delay,
+            error_type=error.error_type.value,
+        ).info(
             f"Retrying segment {segment.index} (attempt {attempt}/{self.max_retries}) "
-            f"after {delay:.2f}s delay due to {error.error_type.value}: {error}",
-            extra={
-                "segment_url": segment.url,
-                "segment_index": segment.index,
-                "attempt": attempt,
-                "max_retries": self.max_retries,
-                "delay": delay,
-                "error_type": error.error_type.value,
-            }
+            f"after {delay:.2f}s delay due to {error.error_type.value}: {error}"
         )
     
     def increment_retry_count(self, segment: SegmentInfo) -> int:
@@ -371,14 +370,11 @@ class ErrorHandler:
                 
                 # Success - reset retry count and return result
                 if attempt > 0:  # Only log if this was a retry
-                    logger.info(
-                        f"Segment {segment.index} succeeded after {attempt} retries",
-                        extra={
-                            "segment_url": segment.url,
-                            "segment_index": segment.index,
-                            "attempts": attempt + 1,
-                        }
-                    )
+                    logger.bind(
+                        segment_url=segment.url,
+                        segment_index=segment.index,
+                        attempts=attempt + 1,
+                    ).info(f"Segment {segment.index} succeeded after {attempt} retries")
                     self.reset_retry_count(segment)
                 
                 return result
@@ -407,15 +403,12 @@ class ErrorHandler:
                     
                 else:
                     # No more retries or error is not retryable
-                    logger.error(
-                        f"Segment {segment.index} failed permanently after {attempt + 1} attempts",
-                        extra={
-                            "segment_url": segment.url,
-                            "segment_index": segment.index,
-                            "total_attempts": attempt + 1,
-                            "final_error": str(download_error),
-                        }
-                    )
+                    logger.bind(
+                        segment_url=segment.url,
+                        segment_index=segment.index,
+                        total_attempts=attempt + 1,
+                        final_error=str(download_error),
+                    ).error(f"Segment {segment.index} failed permanently after {attempt + 1} attempts")
                     break
         
         # All retries exhausted

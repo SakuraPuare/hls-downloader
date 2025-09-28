@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional
 
 from .download_manager import DownloadManager
 from .models import DownloadConfig
+from .logging_config import LoggingConfig
+from .user_messages import UserMessageDisplay, show_user_error, show_success, show_info
 
 
 def load_config_file(config_path: Path) -> Dict[str, Any]:
@@ -160,12 +162,30 @@ Examples:
         help="Check if there's a resumable download and show info",
     )
 
-    # Utility options
-    parser.add_argument(
+    # Logging options
+    logging_group = parser.add_argument_group('Logging Options')
+    logging_group.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
+    logging_group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode with detailed logging",
+    )
+    logging_group.add_argument(
+        "--log-file",
+        type=Path,
+        help="Save logs to file (with automatic rotation)",
+    )
+    logging_group.add_argument(
+        "--structured-logs",
+        action="store_true",
+        help="Use structured JSON logging format",
+    )
+    
+    # Utility options
     parser.add_argument(
         "--version",
         action="version",
@@ -231,7 +251,7 @@ def validate_arguments(args: argparse.Namespace) -> bool:
     
     if errors:
         for error in errors:
-            print(f"Error: {error}", file=sys.stderr)
+            show_user_error(error, show_help=False)
         return False
     
     return True
@@ -302,6 +322,18 @@ async def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
 
+    # Setup logging first
+    logging_config = LoggingConfig.from_cli_args(
+        verbose=args.verbose,
+        debug=args.debug,
+        log_file=str(args.log_file) if args.log_file else None,
+        structured=args.structured_logs
+    )
+    logging_config.setup_logging()
+    
+    # Initialize user message display
+    message_display = UserMessageDisplay(verbose=args.verbose or args.debug)
+
     # Determine config file path
     config_path = args.config if args.config else get_default_config_path()
     
@@ -315,7 +347,7 @@ async def main() -> None:
     try:
         config = DownloadConfig(**merged_config)
     except (TypeError, ValueError) as e:
-        print(f"Configuration error: {e}", file=sys.stderr)
+        show_user_error(f"Configuration error: {e}")
         sys.exit(1)
     
     # Initialize download manager for special commands that need it
@@ -337,9 +369,9 @@ async def main() -> None:
             'output_format': config.output_format,
         }
         if save_config_file(config_path, config_dict):
-            print(f"Configuration saved to {config_path}")
+            show_success(f"Configuration saved to {config_path}")
         else:
-            print("Failed to save configuration", file=sys.stderr)
+            show_user_error("Failed to save configuration", show_help=False)
             sys.exit(1)
         return
     
@@ -359,18 +391,17 @@ async def main() -> None:
                 resume_info = manager.get_resume_info(args.output)
                 if resume_info and resume_info.get('url'):
                     args.url = resume_info['url']
-                    print(f"Resuming download: {args.url}")
+                    show_info(f"Resuming download: {args.url}")
                 else:
-                    print("Error: Cannot determine URL from existing state", file=sys.stderr)
+                    show_user_error("Cannot determine URL from existing state", show_help=False)
                     sys.exit(1)
             else:
-                print(f"Error: No resumable download found in {args.output}", file=sys.stderr)
+                show_user_error(f"No resumable download found in {args.output}", show_help=False)
                 sys.exit(1)
     
     # URL is required for download
     if not args.url:
-        print("Error: URL is required for download", file=sys.stderr)
-        parser.print_help()
+        show_user_error("URL is required for download")
         sys.exit(1)
     
     # Create output directory if it doesn't exist
@@ -378,7 +409,7 @@ async def main() -> None:
     try:
         output_path.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        print(f"Error creating output directory: {e}", file=sys.stderr)
+        show_user_error(f"Error creating output directory: {e}", show_help=False)
         sys.exit(1)
 
     try:
@@ -418,14 +449,16 @@ async def main() -> None:
                 print(f"Merged video: {result['merged_video_path']}")
         
     except KeyboardInterrupt:
-        print("\nDownload interrupted by user", file=sys.stderr)
-        print("You can resume this download later using --resume option")
+        show_user_error("Download interrupted by user", show_help=False)
+        message_display.show_resume_help(args.output)
         sys.exit(130)  # Standard exit code for SIGINT
     except Exception as e:
-        print(f"Download failed: {e}", file=sys.stderr)
-        if args.verbose:
+        show_user_error(f"Download failed: {e}", show_help=False)
+        if args.debug:
             import traceback
             traceback.print_exc()
+        else:
+            message_display.show_download_tips()
         sys.exit(1)
 
 
