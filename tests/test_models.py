@@ -1,6 +1,7 @@
 """Tests for data models."""
 
 import pytest
+
 from hls_downloader.models import DownloadConfig, DownloadStats, SegmentInfo
 
 
@@ -47,10 +48,10 @@ class TestDownloadConfig:
         # Invalid values
         with pytest.raises(ValueError, match="max_concurrent must be greater than 0"):
             DownloadConfig(max_concurrent=0)
-        
+
         with pytest.raises(ValueError, match="max_concurrent must be greater than 0"):
             DownloadConfig(max_concurrent=-1)
-        
+
         with pytest.raises(ValueError, match="max_concurrent must not exceed 100"):
             DownloadConfig(max_concurrent=101)
 
@@ -64,7 +65,7 @@ class TestDownloadConfig:
         # Invalid values
         with pytest.raises(ValueError, match="max_retries must be non-negative"):
             DownloadConfig(max_retries=-1)
-        
+
         with pytest.raises(ValueError, match="max_retries must not exceed 10"):
             DownloadConfig(max_retries=11)
 
@@ -78,10 +79,10 @@ class TestDownloadConfig:
         # Invalid values
         with pytest.raises(ValueError, match="timeout must be greater than 0"):
             DownloadConfig(timeout=0)
-        
+
         with pytest.raises(ValueError, match="timeout must be greater than 0"):
             DownloadConfig(timeout=-1)
-        
+
         with pytest.raises(ValueError, match="timeout must not exceed 300 seconds"):
             DownloadConfig(timeout=301)
 
@@ -95,10 +96,10 @@ class TestDownloadConfig:
         # Invalid values
         with pytest.raises(ValueError, match="chunk_size must be greater than 0"):
             DownloadConfig(chunk_size=0)
-        
+
         with pytest.raises(ValueError, match="chunk_size must be greater than 0"):
             DownloadConfig(chunk_size=-1)
-        
+
         with pytest.raises(ValueError, match="chunk_size must not exceed 1MB"):
             DownloadConfig(chunk_size=1024 * 1024 + 1)
 
@@ -111,7 +112,7 @@ class TestDownloadConfig:
         # Invalid values
         with pytest.raises(ValueError, match="output_format must be one of"):
             DownloadConfig(output_format="invalid")
-        
+
         with pytest.raises(ValueError, match="output_format must be one of"):
             DownloadConfig(output_format="")
 
@@ -164,10 +165,10 @@ class TestSegmentInfo:
         # Invalid URLs
         with pytest.raises(ValueError, match="url cannot be empty"):
             SegmentInfo(url="", index=1, filename="test.ts")
-        
+
         with pytest.raises(ValueError, match="url must be a valid HTTP/HTTPS URL"):
             SegmentInfo(url="ftp://example.com/test.ts", index=1, filename="test.ts")
-        
+
         with pytest.raises(ValueError, match="url must be a valid HTTP/HTTPS URL"):
             SegmentInfo(url="invalid-url", index=1, filename="test.ts")
 
@@ -185,7 +186,9 @@ class TestSegmentInfo:
         """Test filename validation."""
         # Valid filenames
         SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts")
-        SegmentInfo(url="https://example.com/test.ts", index=1, filename="segment_001.ts")
+        SegmentInfo(
+            url="https://example.com/test.ts", index=1, filename="segment_001.ts"
+        )
 
         # Invalid filenames
         with pytest.raises(ValueError, match="filename cannot be empty"):
@@ -194,18 +197,28 @@ class TestSegmentInfo:
     def test_validation_size(self):
         """Test size validation."""
         # Valid sizes
-        SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts", size=None)
-        SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts", size=0)
-        SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts", size=1024)
+        SegmentInfo(
+            url="https://example.com/test.ts", index=1, filename="test.ts", size=None
+        )
+        SegmentInfo(
+            url="https://example.com/test.ts", index=1, filename="test.ts", size=0
+        )
+        SegmentInfo(
+            url="https://example.com/test.ts", index=1, filename="test.ts", size=1024
+        )
 
         # Invalid sizes
         with pytest.raises(ValueError, match="size must be non-negative"):
-            SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts", size=-1)
+            SegmentInfo(
+                url="https://example.com/test.ts", index=1, filename="test.ts", size=-1
+            )
 
     def test_is_valid_property(self):
         """Test is_valid property."""
         # Valid segment
-        segment = SegmentInfo(url="https://example.com/test.ts", index=1, filename="test.ts")
+        segment = SegmentInfo(
+            url="https://example.com/test.ts", index=1, filename="test.ts"
+        )
         assert segment.is_valid is True
 
         # We can't easily test invalid segments since __post_init__ prevents creation
@@ -264,10 +277,14 @@ class TestDownloadStats:
         DownloadStats(total_segments=100, downloaded_segments=100)
 
         # Invalid values
-        with pytest.raises(ValueError, match="downloaded_segments must be non-negative"):
+        with pytest.raises(
+            ValueError, match="downloaded_segments must be non-negative"
+        ):
             DownloadStats(total_segments=100, downloaded_segments=-1)
-        
-        with pytest.raises(ValueError, match="downloaded_segments cannot exceed total_segments"):
+
+        with pytest.raises(
+            ValueError, match="downloaded_segments cannot exceed total_segments"
+        ):
             DownloadStats(total_segments=100, downloaded_segments=101)
 
     def test_validation_failed_segments(self):
@@ -280,8 +297,10 @@ class TestDownloadStats:
         # Invalid values
         with pytest.raises(ValueError, match="failed_segments must be non-negative"):
             DownloadStats(total_segments=100, failed_segments=-1)
-        
-        with pytest.raises(ValueError, match="failed_segments cannot exceed total_segments"):
+
+        with pytest.raises(
+            ValueError, match="failed_segments cannot exceed total_segments"
+        ):
             DownloadStats(total_segments=100, failed_segments=101)
 
     def test_validation_bytes(self):
@@ -292,11 +311,13 @@ class TestDownloadStats:
         # Invalid values
         with pytest.raises(ValueError, match="total_bytes must be non-negative"):
             DownloadStats(total_segments=100, total_bytes=-1)
-        
+
         with pytest.raises(ValueError, match="downloaded_bytes must be non-negative"):
             DownloadStats(total_segments=100, downloaded_bytes=-1)
-        
-        with pytest.raises(ValueError, match="downloaded_bytes cannot exceed total_bytes"):
+
+        with pytest.raises(
+            ValueError, match="downloaded_bytes cannot exceed total_bytes"
+        ):
             DownloadStats(total_segments=100, total_bytes=1000, downloaded_bytes=1001)
 
     def test_validation_time_and_speed(self):
@@ -308,7 +329,7 @@ class TestDownloadStats:
         # Invalid values
         with pytest.raises(ValueError, match="start_time must be non-negative"):
             DownloadStats(total_segments=100, start_time=-1.0)
-        
+
         with pytest.raises(ValueError, match="average_speed must be non-negative"):
             DownloadStats(total_segments=100, average_speed=-1.0)
 
@@ -327,17 +348,23 @@ class TestDownloadStats:
 
     def test_remaining_segments(self):
         """Test remaining segments calculation."""
-        stats = DownloadStats(total_segments=100, downloaded_segments=30, failed_segments=10)
+        stats = DownloadStats(
+            total_segments=100, downloaded_segments=30, failed_segments=10
+        )
         assert stats.remaining_segments == 60
 
         # All completed
-        stats = DownloadStats(total_segments=100, downloaded_segments=80, failed_segments=20)
+        stats = DownloadStats(
+            total_segments=100, downloaded_segments=80, failed_segments=20
+        )
         assert stats.remaining_segments == 0
 
     def test_success_rate(self):
         """Test success rate calculation."""
         # Normal case
-        stats = DownloadStats(total_segments=100, downloaded_segments=80, failed_segments=20)
+        stats = DownloadStats(
+            total_segments=100, downloaded_segments=80, failed_segments=20
+        )
         assert stats.success_rate == 80.0
 
         # No completed segments
@@ -350,8 +377,10 @@ class TestDownloadStats:
 
     def test_update_speed(self):
         """Test speed update method."""
-        stats = DownloadStats(total_segments=100, total_bytes=2048, downloaded_bytes=1024)
-        
+        stats = DownloadStats(
+            total_segments=100, total_bytes=2048, downloaded_bytes=1024
+        )
+
         # Update with valid elapsed time
         stats.update_speed(2.0)
         assert stats.average_speed == 512.0

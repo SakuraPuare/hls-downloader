@@ -22,22 +22,22 @@ class DownloadConfig:
             raise ValueError("max_concurrent must be greater than 0")
         if self.max_concurrent > 100:
             raise ValueError("max_concurrent must not exceed 100")
-        
+
         if self.max_retries < 0:
             raise ValueError("max_retries must be non-negative")
         if self.max_retries > 10:
             raise ValueError("max_retries must not exceed 10")
-        
+
         if self.timeout <= 0:
             raise ValueError("timeout must be greater than 0")
         if self.timeout > 300:
             raise ValueError("timeout must not exceed 300 seconds")
-        
+
         if self.chunk_size <= 0:
             raise ValueError("chunk_size must be greater than 0")
         if self.chunk_size > 1024 * 1024:  # 1MB max
             raise ValueError("chunk_size must not exceed 1MB")
-        
+
         valid_formats = {"mp4", "mkv", "avi", "mov", "ts"}
         if self.output_format not in valid_formats:
             raise ValueError(f"output_format must be one of {valid_formats}")
@@ -67,13 +67,13 @@ class SegmentInfo:
             raise ValueError("url cannot be empty")
         if not self.url.startswith(("http://", "https://")):
             raise ValueError("url must be a valid HTTP/HTTPS URL")
-        
+
         if self.index < 0:
             raise ValueError("index must be non-negative")
-        
+
         if not self.filename:
             raise ValueError("filename cannot be empty")
-        
+
         if self.size is not None and self.size < 0:
             raise ValueError("size must be non-negative")
 
@@ -103,28 +103,28 @@ class DownloadStats:
         """Validate download statistics after initialization."""
         if self.total_segments < 0:
             raise ValueError("total_segments must be non-negative")
-        
+
         if self.downloaded_segments < 0:
             raise ValueError("downloaded_segments must be non-negative")
         if self.downloaded_segments > self.total_segments:
             raise ValueError("downloaded_segments cannot exceed total_segments")
-        
+
         if self.failed_segments < 0:
             raise ValueError("failed_segments must be non-negative")
         if self.failed_segments > self.total_segments:
             raise ValueError("failed_segments cannot exceed total_segments")
-        
+
         if self.total_bytes < 0:
             raise ValueError("total_bytes must be non-negative")
-        
+
         if self.downloaded_bytes < 0:
             raise ValueError("downloaded_bytes must be non-negative")
         if self.downloaded_bytes > self.total_bytes:
             raise ValueError("downloaded_bytes cannot exceed total_bytes")
-        
+
         if self.start_time < 0:
             raise ValueError("start_time must be non-negative")
-        
+
         if self.average_speed < 0:
             raise ValueError("average_speed must be non-negative")
 

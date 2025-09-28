@@ -5,18 +5,18 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 from .download_manager import DownloadManager
-from .models import DownloadConfig
 from .logging_config import LoggingConfig
-from .user_messages import UserMessageDisplay, show_user_error, show_success, show_info
+from .models import DownloadConfig
+from .user_messages import UserMessageDisplay, show_info, show_success, show_user_error
 
 
-def load_config_file(config_path: Path) -> Dict[str, Any]:
+def load_config_file(config_path: Path) -> dict[str, Any]:
     """Load configuration from JSON file."""
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
@@ -28,11 +28,11 @@ def load_config_file(config_path: Path) -> Dict[str, Any]:
         return {}
 
 
-def save_config_file(config_path: Path, config: Dict[str, Any]) -> bool:
+def save_config_file(config_path: Path, config: dict[str, Any]) -> bool:
     """Save configuration to JSON file."""
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
@@ -43,7 +43,7 @@ def save_config_file(config_path: Path, config: Dict[str, Any]) -> bool:
 def get_default_config_path() -> Path:
     """Get default configuration file path."""
     home = Path.home()
-    return home / '.hls_downloader' / 'config.json'
+    return home / ".hls_downloader" / "config.json"
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -58,20 +58,21 @@ Examples:
   %(prog)s --save-config  # Save current settings as default
   %(prog)s --show-config  # Show current configuration
         """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Positional argument
     parser.add_argument(
         "url",
-        nargs='?',
+        nargs="?",
         help="HLS segment URL template (e.g., 'https://example.com/segment{}.ts')",
     )
 
     # Output options
-    output_group = parser.add_argument_group('Output Options')
+    output_group = parser.add_argument_group("Output Options")
     output_group.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         default="./downloads",
         help="Output directory for downloaded files (default: ./downloads)",
     )
@@ -83,16 +84,18 @@ Examples:
     )
 
     # Download options
-    download_group = parser.add_argument_group('Download Options')
+    download_group = parser.add_argument_group("Download Options")
     download_group.add_argument(
-        "-c", "--concurrent",
+        "-c",
+        "--concurrent",
         type=int,
         default=10,
         metavar="N",
         help="Maximum concurrent downloads (1-100, default: 10)",
     )
     download_group.add_argument(
-        "-r", "--retries",
+        "-r",
+        "--retries",
         type=int,
         default=3,
         metavar="N",
@@ -114,7 +117,7 @@ Examples:
     )
 
     # Processing options
-    process_group = parser.add_argument_group('Processing Options')
+    process_group = parser.add_argument_group("Processing Options")
     process_group.add_argument(
         "--no-merge",
         action="store_true",
@@ -127,7 +130,7 @@ Examples:
     )
 
     # Configuration options
-    config_group = parser.add_argument_group('Configuration Options')
+    config_group = parser.add_argument_group("Configuration Options")
     config_group.add_argument(
         "--config",
         type=Path,
@@ -145,7 +148,7 @@ Examples:
     )
 
     # Resume options
-    resume_group = parser.add_argument_group('Resume Options')
+    resume_group = parser.add_argument_group("Resume Options")
     resume_group.add_argument(
         "--resume",
         action="store_true",
@@ -163,9 +166,10 @@ Examples:
     )
 
     # Logging options
-    logging_group = parser.add_argument_group('Logging Options')
+    logging_group = parser.add_argument_group("Logging Options")
     logging_group.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -184,7 +188,7 @@ Examples:
         action="store_true",
         help="Use structured JSON logging format",
     )
-    
+
     # Utility options
     parser.add_argument(
         "--version",
@@ -195,22 +199,24 @@ Examples:
     return parser
 
 
-def merge_config(base_config: Dict[str, Any], cli_args: argparse.Namespace) -> Dict[str, Any]:
+def merge_config(
+    base_config: dict[str, Any], cli_args: argparse.Namespace
+) -> dict[str, Any]:
     """Merge configuration from file with CLI arguments."""
     # CLI arguments take precedence over config file
     merged = base_config.copy()
-    
+
     # Map CLI arguments to config keys
     arg_mapping = {
-        'concurrent': 'max_concurrent',
-        'retries': 'max_retries',
-        'timeout': 'timeout',
-        'chunk_size': 'chunk_size',
-        'format': 'output_format',
-        'no_merge': ('auto_merge', lambda x: not x),  # Invert the boolean
-        'cleanup': 'cleanup_segments',
+        "concurrent": "max_concurrent",
+        "retries": "max_retries",
+        "timeout": "timeout",
+        "chunk_size": "chunk_size",
+        "format": "output_format",
+        "no_merge": ("auto_merge", lambda x: not x),  # Invert the boolean
+        "cleanup": "cleanup_segments",
     }
-    
+
     for cli_arg, config_key in arg_mapping.items():
         if hasattr(cli_args, cli_arg):
             value = getattr(cli_args, cli_arg)
@@ -221,39 +227,39 @@ def merge_config(base_config: Dict[str, Any], cli_args: argparse.Namespace) -> D
                     merged[key] = transform(value)
                 else:
                     merged[config_key] = value
-    
+
     return merged
 
 
 def validate_arguments(args: argparse.Namespace) -> bool:
     """Validate command line arguments."""
     errors = []
-    
+
     # Validate concurrent downloads
     if args.concurrent < 1 or args.concurrent > 100:
         errors.append("Concurrent downloads must be between 1 and 100")
-    
+
     # Validate retries
     if args.retries < 0 or args.retries > 10:
         errors.append("Retries must be between 0 and 10")
-    
+
     # Validate timeout
     if args.timeout < 1 or args.timeout > 300:
         errors.append("Timeout must be between 1 and 300 seconds")
-    
+
     # Validate chunk size
     if args.chunk_size < 1 or args.chunk_size > 1024 * 1024:
         errors.append("Chunk size must be between 1 and 1048576 bytes")
-    
+
     # Validate URL format if provided
-    if args.url and '{}' not in args.url:
+    if args.url and "{}" not in args.url:
         errors.append("URL must contain '{}' placeholder for segment numbers")
-    
+
     if errors:
         for error in errors:
             show_user_error(error, show_help=False)
         return False
-    
+
     return True
 
 
@@ -268,7 +274,7 @@ def show_config(config: DownloadConfig, config_path: Optional[Path] = None) -> N
     print(f"Auto Merge: {config.auto_merge}")
     print(f"Cleanup Segments: {config.cleanup_segments}")
     print(f"Output Format: {config.output_format}")
-    
+
     if config_path:
         print(f"\nConfig file: {config_path}")
         if config_path.exists():
@@ -282,12 +288,12 @@ def show_resume_info(output_dir: str, manager: DownloadManager) -> None:
     if not manager.has_resumable_download(output_dir):
         print(f"No resumable download found in: {output_dir}")
         return
-    
+
     info = manager.get_resume_info(output_dir)
     if not info:
         print(f"Cannot read resume information from: {output_dir}")
         return
-    
+
     print("Resumable Download Found:")
     print("=" * 50)
     print(f"URL: {info['url']}")
@@ -295,26 +301,28 @@ def show_resume_info(output_dir: str, manager: DownloadManager) -> None:
     print(f"Total Segments: {info['total_segments']}")
     print(f"Downloaded: {info['downloaded_segments']}")
     print(f"Failed: {info['failed_segments']}")
-    
-    if info['total_segments'] > 0:
-        completion = (info['downloaded_segments'] / info['total_segments']) * 100
+
+    if info["total_segments"] > 0:
+        completion = (info["downloaded_segments"] / info["total_segments"]) * 100
         print(f"Completion: {completion:.1f}%")
-    
+
     # Show timestamps if available
-    if info.get('created_at'):
+    if info.get("created_at"):
         import datetime
-        created = datetime.datetime.fromtimestamp(info['created_at'])
+
+        created = datetime.datetime.fromtimestamp(info["created_at"])
         print(f"Created: {created.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    if info.get('updated_at'):
+
+    if info.get("updated_at"):
         import datetime
-        updated = datetime.datetime.fromtimestamp(info['updated_at'])
+
+        updated = datetime.datetime.fromtimestamp(info["updated_at"])
         print(f"Last Updated: {updated.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    if info.get('resume_count', 0) > 0:
+
+    if info.get("resume_count", 0) > 0:
         print(f"Resume Count: {info['resume_count']}")
-    
-    print(f"\nTo resume: {sys.argv[0]} --resume -o \"{output_dir}\" \"{info['url']}\"")
+
+    print(f'\nTo resume: {sys.argv[0]} --resume -o "{output_dir}" "{info["url"]}"')
 
 
 async def main() -> None:
@@ -327,46 +335,46 @@ async def main() -> None:
         verbose=args.verbose,
         debug=args.debug,
         log_file=str(args.log_file) if args.log_file else None,
-        structured=args.structured_logs
+        structured=args.structured_logs,
     )
     logging_config.setup_logging()
-    
+
     # Initialize user message display
     message_display = UserMessageDisplay(verbose=args.verbose or args.debug)
 
     # Determine config file path
     config_path = args.config if args.config else get_default_config_path()
-    
+
     # Load configuration from file
     file_config = load_config_file(config_path)
-    
+
     # Merge file config with CLI arguments
     merged_config = merge_config(file_config, args)
-    
+
     # Create download configuration
     try:
         config = DownloadConfig(**merged_config)
     except (TypeError, ValueError) as e:
         show_user_error(f"Configuration error: {e}")
         sys.exit(1)
-    
+
     # Initialize download manager for special commands that need it
     manager = DownloadManager(config)
-    
+
     # Handle special commands
     if args.show_config:
         show_config(config, config_path)
         return
-    
+
     if args.save_config:
         config_dict = {
-            'max_concurrent': config.max_concurrent,
-            'max_retries': config.max_retries,
-            'timeout': config.timeout,
-            'chunk_size': config.chunk_size,
-            'auto_merge': config.auto_merge,
-            'cleanup_segments': config.cleanup_segments,
-            'output_format': config.output_format,
+            "max_concurrent": config.max_concurrent,
+            "max_retries": config.max_retries,
+            "timeout": config.timeout,
+            "chunk_size": config.chunk_size,
+            "auto_merge": config.auto_merge,
+            "cleanup_segments": config.cleanup_segments,
+            "output_format": config.output_format,
         }
         if save_config_file(config_path, config_dict):
             show_success(f"Configuration saved to {config_path}")
@@ -374,36 +382,40 @@ async def main() -> None:
             show_user_error("Failed to save configuration", show_help=False)
             sys.exit(1)
         return
-    
+
     if args.check_resume:
         show_resume_info(args.output, manager)
         return
-    
+
     # Validate arguments
     if not validate_arguments(args):
         sys.exit(1)
-    
+
     # Handle resume mode
     if args.resume:
         # For resume, try to get URL from existing state if not provided
         if not args.url:
             if manager.has_resumable_download(args.output):
                 resume_info = manager.get_resume_info(args.output)
-                if resume_info and resume_info.get('url'):
-                    args.url = resume_info['url']
+                if resume_info and resume_info.get("url"):
+                    args.url = resume_info["url"]
                     show_info(f"Resuming download: {args.url}")
                 else:
-                    show_user_error("Cannot determine URL from existing state", show_help=False)
+                    show_user_error(
+                        "Cannot determine URL from existing state", show_help=False
+                    )
                     sys.exit(1)
             else:
-                show_user_error(f"No resumable download found in {args.output}", show_help=False)
+                show_user_error(
+                    f"No resumable download found in {args.output}", show_help=False
+                )
                 sys.exit(1)
-    
+
     # URL is required for download
     if not args.url:
         show_user_error("URL is required for download")
         sys.exit(1)
-    
+
     # Create output directory if it doesn't exist
     output_path = Path(args.output)
     try:
@@ -414,40 +426,38 @@ async def main() -> None:
 
     try:
         if args.verbose:
-            print(f"Starting download with configuration:")
+            print("Starting download with configuration:")
             show_config(config)
             print(f"\nDownloading from: {args.url}")
             print(f"Output directory: {output_path}")
-            
+
             # Show resume info if applicable
             if args.resume and manager.has_resumable_download(str(output_path)):
                 print("\nResume Information:")
                 show_resume_info(str(output_path), manager)
-            
+
             print("-" * 50)
-        
+
         # Start download with appropriate resume settings
         result = await manager.download_hls(
-            args.url, 
-            str(output_path),
-            force_restart=args.force_restart
+            args.url, str(output_path), force_restart=args.force_restart
         )
-        
+
         # Show results
         if result.get("resumed"):
-            print(f"Download resumed and completed successfully!")
+            print("Download resumed and completed successfully!")
             print(f"Resumed {result.get('existing_segments', 0)} existing segments")
         else:
             print("Download completed successfully!")
-        
+
         if args.verbose:
             print(f"Total segments: {result.get('total_segments', 0)}")
             print(f"Successful: {result.get('successful_segments', 0)}")
-            if result.get('failed_segments', 0) > 0:
+            if result.get("failed_segments", 0) > 0:
                 print(f"Failed: {result.get('failed_segments', 0)}")
-            if result.get('merged_video_path'):
+            if result.get("merged_video_path"):
                 print(f"Merged video: {result['merged_video_path']}")
-        
+
     except KeyboardInterrupt:
         show_user_error("Download interrupted by user", show_help=False)
         message_display.show_resume_help(args.output)
@@ -456,6 +466,7 @@ async def main() -> None:
         show_user_error(f"Download failed: {e}", show_help=False)
         if args.debug:
             import traceback
+
             traceback.print_exc()
         else:
             message_display.show_download_tips()

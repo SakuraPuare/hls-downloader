@@ -4,11 +4,11 @@ __version__ = "0.1.0"
 __author__ = "HLS Downloader Team"
 __email__ = "team@hlsdownloader.dev"
 
-from .download_manager import DownloadManager
 from .detector import HLSDetector
-from .merger import VideoMerger, VideoMergerError, FFmpegNotFoundError, MergeError
+from .download_manager import DownloadManager
+from .merger import FFmpegNotFoundError, MergeError, VideoMerger, VideoMergerError
 from .models import DownloadConfig, DownloadStats, SegmentInfo
-from .progress_display import ProgressDisplay, MultiThreadProgressWrapper
+from .progress_display import MultiThreadProgressWrapper, ProgressDisplay
 
 __all__ = [
     "DownloadManager",
