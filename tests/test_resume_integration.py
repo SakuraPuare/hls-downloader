@@ -125,7 +125,7 @@ class TestResumeIntegration:
                 with patch.object(manager, '_downloader') as mock_downloader:
                     mock_downloader_instance = AsyncMock()
                     # Simulate partial download (first segment fails)
-                    download_results = mock_segments.copy()
+                    download_results = deepcopy(mock_segments)
                     download_results[0].downloaded = True
                     download_results[1].downloaded = True
                     download_results[2].downloaded = False
@@ -173,7 +173,7 @@ class TestResumeIntegration:
             )
             
             # Set up segments with some already downloaded
-            segments_with_status = mock_segments.copy()
+            segments_with_status = deepcopy(mock_segments)
             segments_with_status[0].downloaded = True
             segments_with_status[1].downloaded = True
             segments_with_status[2].downloaded = False
@@ -189,7 +189,6 @@ class TestResumeIntegration:
             manager = DownloadManager(download_config)
 
             # Only the missing segment should be downloaded
-            from copy import deepcopy
             remaining_segment = deepcopy(mock_segments[2])
             remaining_segment.downloaded = True
 
@@ -321,17 +320,19 @@ class TestResumeIntegration:
             manager = DownloadManager(download_config)
 
             # For force restart, all segments should be downloaded (start from fresh)
-            fresh_segments = mock_segments.copy()
+            fresh_segments = deepcopy(mock_segments)
             for segment in fresh_segments:
                 segment.downloaded = False  # Start fresh
 
-            download_results = mock_segments.copy()
+            download_results = deepcopy(mock_segments)
             for segment in download_results:
                 segment.downloaded = True  # After download they should be complete
 
             # Set up mocked components - no resume, fresh detection
+            # For force restart, no segments should be marked as valid (all should be re-downloaded)
             mock_initialize, mock_detector_instance, mock_downloader_instance, mock_resume_validator = self._setup_mocked_components(
-                manager, temp_dir, fresh_segments, download_results
+                manager, temp_dir, fresh_segments, download_results,
+                valid_segments=[], invalid_segments=fresh_segments
             )
 
             with patch.object(manager, '_initialize_components', side_effect=mock_initialize), \
@@ -379,28 +380,37 @@ class TestResumeIntegration:
             
             # Try to download with different URL
             manager = DownloadManager(download_config)
-            
-            with patch.object(manager, '_detector') as mock_detector:
-                mock_detector_instance = AsyncMock()
-                mock_detector_instance.detect_segments.return_value = mock_segments
-                mock_detector.__aenter__.return_value = mock_detector_instance
-                
-                with patch.object(manager, '_downloader') as mock_downloader:
-                    mock_downloader_instance = AsyncMock()
-                    download_results = mock_segments.copy()
-                    for segment in download_results:
-                        segment.downloaded = True
-                    mock_downloader_instance.download_segments.return_value = download_results
-                    mock_downloader.__aenter__.return_value = mock_downloader_instance
-                    
-                    with patch.object(manager, '_progress_display'), \
-                         patch.object(manager, '_merger', None):
-                        
-                        result = await manager.download_hls(
-                            url="http://example.com/segment{}.ts",  # Different URL
-                            output_dir=temp_dir,
-                            output_filename="test.mp4"
-                        )
+
+            # Set up all segments to be downloaded fresh (not downloaded)
+            fresh_segments = deepcopy(mock_segments)
+            for segment in fresh_segments:
+                segment.downloaded = False
+
+            download_results = deepcopy(mock_segments)
+            for segment in download_results:
+                segment.downloaded = True
+
+            # Set up mocked components properly to avoid real HTTP requests
+            mock_initialize, mock_detector_instance, mock_downloader_instance, mock_resume_validator = self._setup_mocked_components(
+                manager, temp_dir, fresh_segments, download_results,
+                valid_segments=[], invalid_segments=fresh_segments
+            )
+
+            with patch.object(manager, '_initialize_components', side_effect=mock_initialize), \
+                 patch.object(manager, '_progress_display'), \
+                 patch.object(manager, '_merger', None), \
+                 patch.object(manager, '_generate_results', return_value={
+                     "success": True,
+                     "segments_downloaded": 3,
+                     "total_segments": 3,
+                     "output_file": None
+                 }):
+
+                result = await manager.download_hls(
+                    url="http://example.com/segment{}.ts",  # Different URL
+                    output_dir=temp_dir,
+                    output_filename="test.mp4"
+                )
                 
                 # Verify fresh detection was performed
                 mock_detector_instance.detect_segments.assert_called_once()
@@ -413,37 +423,46 @@ class TestResumeIntegration:
         """Test that state is updated during download process."""
         with tempfile.TemporaryDirectory() as temp_dir:
             manager = DownloadManager(download_config)
-            
+
             # Track state updates
             state_updates = []
             original_save_state = StateManager.save_state
-            
+
             def track_save_state(self, state):
                 state_updates.append((state.status, len([s for s in state.segments if s.downloaded])))
                 return original_save_state(self, state)
-            
+
+            # Set up all segments to be downloaded fresh (not downloaded)
+            fresh_segments = deepcopy(mock_segments)
+            for segment in fresh_segments:
+                segment.downloaded = False
+
+            download_results = deepcopy(mock_segments)
+            for segment in download_results:
+                segment.downloaded = True
+
+            # Set up mocked components properly to avoid real HTTP requests
+            mock_initialize, mock_detector_instance, mock_downloader_instance, mock_resume_validator = self._setup_mocked_components(
+                manager, temp_dir, fresh_segments, download_results,
+                valid_segments=[], invalid_segments=fresh_segments
+            )
+
             with patch.object(StateManager, 'save_state', track_save_state):
-                with patch.object(manager, '_detector') as mock_detector:
-                    mock_detector_instance = AsyncMock()
-                    mock_detector_instance.detect_segments.return_value = mock_segments
-                    mock_detector.__aenter__.return_value = mock_detector_instance
-                    
-                    with patch.object(manager, '_downloader') as mock_downloader:
-                        mock_downloader_instance = AsyncMock()
-                        download_results = mock_segments.copy()
-                        for segment in download_results:
-                            segment.downloaded = True
-                        mock_downloader_instance.download_segments.return_value = download_results
-                        mock_downloader.__aenter__.return_value = mock_downloader_instance
-                        
-                        with patch.object(manager, '_progress_display'), \
-                             patch.object(manager, '_merger', None):
-                            
-                            await manager.download_hls(
-                                url="http://example.com/segment{}.ts",
-                                output_dir=temp_dir,
-                                output_filename="test.mp4"
-                            )
+                with patch.object(manager, '_initialize_components', side_effect=mock_initialize), \
+                     patch.object(manager, '_progress_display'), \
+                     patch.object(manager, '_merger', None), \
+                     patch.object(manager, '_generate_results', return_value={
+                         "success": True,
+                         "segments_downloaded": 3,
+                         "total_segments": 3,
+                         "output_file": None
+                     }):
+
+                    await manager.download_hls(
+                        url="http://example.com/segment{}.ts",
+                        output_dir=temp_dir,
+                        output_filename="test.mp4"
+                    )
             
             # Verify state was updated through the process
             assert len(state_updates) >= 3  # At least: detecting, downloading, completed
@@ -526,7 +545,7 @@ class TestResumeIntegration:
                 config=download_config
             )
             
-            segments_with_status = mock_segments.copy()
+            segments_with_status = deepcopy(mock_segments)
             segments_with_status[0].downloaded = True
             state_manager.update_state_segments(initial_state, segments_with_status)
             
@@ -541,7 +560,7 @@ class TestResumeIntegration:
                 
                 with patch.object(manager, '_downloader') as mock_downloader:
                     mock_downloader_instance = AsyncMock()
-                    remaining_segments = mock_segments[1:].copy()
+                    remaining_segments = deepcopy(mock_segments[1:])
                     for segment in remaining_segments:
                         segment.downloaded = True
                     mock_downloader_instance.download_segments.return_value = remaining_segments

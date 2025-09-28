@@ -57,14 +57,14 @@ class HLSDetector:
 
     def _extract_url_pattern(self, url: str) -> Tuple[str, str, str]:
         """Extract URL pattern components from a template URL.
-        
+
         Args:
             url: Template URL with segment number (e.g., "http://example.com/segment1.ts")
                  or template with braces (e.g., "http://example.com/segment{}.ts")
-            
+
         Returns:
             Tuple of (base_url, number_pattern, extension)
-            
+
         Raises:
             ValueError: If URL pattern cannot be parsed
         """
@@ -74,18 +74,25 @@ class HLSDetector:
         # Parse URL components
         parsed = urlparse(url)
         path = parsed.path
-        
+
+        # Preserve query parameters and fragments
+        query_fragment = ""
+        if parsed.query:
+            query_fragment += f"?{parsed.query}"
+        if parsed.fragment:
+            query_fragment += f"#{parsed.fragment}"
+
         # Extract filename from path
         filename = path.split('/')[-1]
         base_path = '/'.join(path.split('/')[:-1])
-        
+
         # Check for template URLs with braces first (for testing)
         brace_patterns = [
             r'^([a-zA-Z_-]+)\{\}([a-zA-Z_-]+)\.(\w+)$',  # Complex: seg_{}_hd.ts
             r'^([a-zA-Z_-]+)\{\}\.(\w+)$',  # With prefix: segment{}.ts
             r'^\{\}\.(\w+)$',  # Simple: {}.ts
         ]
-        
+
         for pattern in brace_patterns:
             match = re.match(pattern, filename)
             if match:
@@ -100,23 +107,24 @@ class HLSDetector:
                     else:  # No suffix
                         prefix, extension = groups[0], groups[1]
                         suffix = ""
-                
+
                 # Construct base URL
                 base_url = f"{parsed.scheme}://{parsed.netloc}{base_path}/"
-                
+
                 # Create pattern template (default to no zero-padding for brace templates)
-                pattern_template = f"{prefix}{{}}{suffix}.{extension}"
-                
+                pattern_template = f"{prefix}{{}}{suffix}.{extension}{query_fragment}"
+
                 return base_url, pattern_template, extension
-        
+
         # Find number patterns in filename for real URLs
         # Support various formats: 1.ts, 001.ts, segment1.ts, seg_001.ts, etc.
+        # Also handle edge cases like seg.1.ts (dots in filename)
         number_patterns = [
-            r'^([a-zA-Z_-]+)(\d+)([a-zA-Z_-]+)\.(\w+)$',  # Complex: seg_001_hd.ts
-            r'^([a-zA-Z_-]+)(\d+)\.(\w+)$',  # With prefix: segment1.ts, seg_001.ts
+            r'^([a-zA-Z_.-]+)(\d+)([a-zA-Z_.-]+)\.(\w+)$',  # Complex: seg_001_hd.ts, seg.1.final.ts
+            r'^([a-zA-Z_.-]+)(\d+)\.(\w+)$',  # With prefix: segment1.ts, seg_001.ts, seg.1.ts
             r'^(\d+)\.(\w+)$',  # Simple: 1.ts, 001.ts
         ]
-        
+
         for pattern in number_patterns:
             match = re.match(pattern, filename)
             if match:
@@ -130,23 +138,23 @@ class HLSDetector:
                     suffix = ""
                 else:  # Complex pattern: prefix+number+suffix.ext
                     prefix, number_str, suffix, extension = groups
-                
+
                 # Determine number format (zero-padded or not)
                 number_width = len(number_str) if number_str.startswith('0') and len(number_str) > 1 else 0
-                
+
                 # Construct base URL
                 base_url = f"{parsed.scheme}://{parsed.netloc}{base_path}/"
-                
+
                 # Create pattern template
                 if number_width > 0:
                     number_template = f"{{:0{number_width}d}}"
                 else:
                     number_template = "{}"
-                
-                pattern_template = f"{prefix}{number_template}{suffix}.{extension}"
-                
+
+                pattern_template = f"{prefix}{number_template}{suffix}.{extension}{query_fragment}"
+
                 return base_url, pattern_template, extension
-        
+
         raise ValueError(f"Could not extract number pattern from URL: {url}")
 
     def _generate_segment_url(self, base_url: str, pattern: str, index: int) -> str:
