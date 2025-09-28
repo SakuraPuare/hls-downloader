@@ -60,6 +60,7 @@ class HLSDetector:
         
         Args:
             url: Template URL with segment number (e.g., "http://example.com/segment1.ts")
+                 or template with braces (e.g., "http://example.com/segment{}.ts")
             
         Returns:
             Tuple of (base_url, number_pattern, extension)
@@ -78,7 +79,37 @@ class HLSDetector:
         filename = path.split('/')[-1]
         base_path = '/'.join(path.split('/')[:-1])
         
-        # Find number patterns in filename
+        # Check for template URLs with braces first (for testing)
+        brace_patterns = [
+            r'^([a-zA-Z_-]+)\{\}([a-zA-Z_-]+)\.(\w+)$',  # Complex: seg_{}_hd.ts
+            r'^([a-zA-Z_-]+)\{\}\.(\w+)$',  # With prefix: segment{}.ts
+            r'^\{\}\.(\w+)$',  # Simple: {}.ts
+        ]
+        
+        for pattern in brace_patterns:
+            match = re.match(pattern, filename)
+            if match:
+                groups = match.groups()
+                if len(groups) == 2:  # Simple pattern: {}.ext
+                    extension = groups[0]
+                    prefix = ""
+                    suffix = ""
+                elif len(groups) == 3:  # With prefix: prefix{}.ext or prefix{}suffix.ext
+                    if groups[1]:  # Has suffix
+                        prefix, suffix, extension = groups
+                    else:  # No suffix
+                        prefix, extension = groups[0], groups[1]
+                        suffix = ""
+                
+                # Construct base URL
+                base_url = f"{parsed.scheme}://{parsed.netloc}{base_path}/"
+                
+                # Create pattern template (default to no zero-padding for brace templates)
+                pattern_template = f"{prefix}{{}}{suffix}.{extension}"
+                
+                return base_url, pattern_template, extension
+        
+        # Find number patterns in filename for real URLs
         # Support various formats: 1.ts, 001.ts, segment1.ts, seg_001.ts, etc.
         number_patterns = [
             r'^([a-zA-Z_-]+)(\d+)([a-zA-Z_-]+)\.(\w+)$',  # Complex: seg_001_hd.ts

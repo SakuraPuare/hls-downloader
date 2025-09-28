@@ -213,7 +213,7 @@ class TestAsyncDownloader:
     async def test_download_single_segment_streaming(self, config, temp_dir):
         """Test streaming download functionality."""
         segment = SegmentInfo(
-            url="https://example.com/large.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/large.ts",
             index=1,
             filename="large.ts"
         )
@@ -260,7 +260,7 @@ class TestAsyncDownloader:
     async def test_download_single_segment_no_content_length(self, config, temp_dir):
         """Test download when server doesn't provide content-length header."""
         segment = SegmentInfo(
-            url="https://example.com/no_length.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/no_length.ts",
             index=1,
             filename="no_length.ts"
         )
@@ -303,7 +303,7 @@ class TestAsyncDownloader:
     async def test_verify_file_integrity_success(self, config, temp_dir):
         """Test successful file integrity verification."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=12
@@ -321,7 +321,7 @@ class TestAsyncDownloader:
     async def test_verify_file_integrity_size_mismatch(self, config, temp_dir):
         """Test file integrity verification with size mismatch."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=20  # Expected size doesn't match actual
@@ -339,7 +339,7 @@ class TestAsyncDownloader:
     async def test_verify_file_integrity_no_expected_size(self, config, temp_dir):
         """Test file integrity verification when no expected size is provided."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=None  # No expected size
@@ -359,7 +359,7 @@ class TestAsyncDownloader:
     async def test_verify_file_integrity_empty_file(self, config, temp_dir):
         """Test file integrity verification with empty file."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=None
@@ -377,7 +377,7 @@ class TestAsyncDownloader:
     async def test_verify_file_integrity_missing_file(self, config, temp_dir):
         """Test file integrity verification with missing file."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=12
@@ -396,7 +396,7 @@ class TestAsyncDownloader:
     ):
         """Test public interface for downloading single segment with retry."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -435,7 +435,7 @@ class TestAsyncDownloader:
         """Test that using downloader without context manager raises error."""
         downloader = AsyncDownloader(config)
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -449,7 +449,7 @@ class TestAsyncDownloader:
         # Create more segments than max_concurrent
         segments = [
             SegmentInfo(
-                url=f"https://example.com/segment{i}.ts",
+                url=f"https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment{i}.ts",
                 index=i,
                 filename=f"segment{i}.ts"
             )
@@ -521,7 +521,7 @@ class TestAsyncDownloader:
     async def test_download_with_retry_success_after_failure(self, config, temp_dir):
         """Test successful download after initial failure with retry."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -580,7 +580,7 @@ class TestAsyncDownloader:
     async def test_download_with_retry_permanent_failure(self, config, temp_dir):
         """Test download that fails permanently after all retries."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -631,7 +631,7 @@ class TestAsyncDownloader:
     async def test_download_with_resume_support(self, config, temp_dir):
         """Test download resume functionality."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -682,7 +682,7 @@ class TestAsyncDownloader:
     async def test_download_resume_server_no_support(self, config, temp_dir):
         """Test download when server doesn't support resume."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -725,7 +725,7 @@ class TestAsyncDownloader:
     async def test_download_integrity_error_triggers_retry(self, config, temp_dir):
         """Test that integrity errors trigger retries."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts",
             size=20  # Expected size
@@ -780,9 +780,9 @@ class TestAsyncDownloader:
     async def test_download_segments_with_mixed_results(self, config, temp_dir):
         """Test downloading multiple segments with mixed success/failure."""
         segments = [
-            SegmentInfo(url="https://example.com/segment1.ts", index=1, filename="segment1.ts"),
-            SegmentInfo(url="https://example.com/segment2.ts", index=2, filename="segment2.ts"),
-            SegmentInfo(url="https://example.com/segment3.ts", index=3, filename="segment3.ts"),
+            SegmentInfo(url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment1.ts", index=1, filename="segment1.ts"),
+            SegmentInfo(url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment2.ts", index=2, filename="segment2.ts"),
+            SegmentInfo(url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment3.ts", index=3, filename="segment3.ts"),
         ]
         
         async with AsyncDownloader(config) as downloader:
@@ -856,7 +856,7 @@ class TestAsyncDownloader:
     async def test_get_error_summary(self, config, temp_dir):
         """Test getting error summary from downloader."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -890,7 +890,7 @@ class TestAsyncDownloader:
     async def test_file_integrity_with_tolerance(self, config, temp_dir):
         """Test file integrity verification with size tolerance."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )
@@ -927,7 +927,7 @@ class TestAsyncDownloader:
     async def test_network_error_classification_and_retry(self, config, temp_dir):
         """Test that network errors are properly classified and retried."""
         segment = SegmentInfo(
-            url="https://example.com/test.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/test.ts",
             index=1,
             filename="test.ts"
         )

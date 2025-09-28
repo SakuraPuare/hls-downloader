@@ -33,7 +33,7 @@ class TestErrorHandler:
     def sample_segment(self):
         """Create a sample segment for testing."""
         return SegmentInfo(
-            url="https://example.com/segment1.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment1.ts",
             index=1,
             filename="segment1.ts"
         )
@@ -393,7 +393,7 @@ class TestDownloadErrorClasses:
     def sample_segment(self):
         """Create a sample segment for testing."""
         return SegmentInfo(
-            url="https://example.com/segment1.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/segment1.ts",
             index=1,
             filename="segment1.ts"
         )

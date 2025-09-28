@@ -489,9 +489,10 @@ class TestDownloadManager:
         with patch.object(manager, '_setup_output_directory') as mock_setup, \
              patch.object(manager, '_initialize_components') as mock_init, \
              patch.object(manager, '_detect_segments') as mock_detect, \
-             patch.object(manager, '_download_segments') as mock_download, \
+             patch.object(manager, '_download_segments_with_resume') as mock_download, \
              patch.object(manager, '_merge_segments') as mock_merge, \
-             patch.object(manager, '_cleanup_components') as mock_cleanup:
+             patch.object(manager, '_cleanup_components') as mock_cleanup, \
+             patch.object(manager, '_check_and_handle_resume') as mock_resume:
             
             # Setup return values
             mock_setup.return_value = None
@@ -516,6 +517,9 @@ class TestDownloadManager:
             manager._output_directory = Path("/tmp/output")
             manager._segments_directory = Path("/tmp/segments")
             manager._download_stats = DownloadStats(total_segments=2, start_time=1000.0)
+            
+            # Mock resume check
+            mock_resume.return_value = {"resumed": False, "message": "Starting fresh"}
             
             with patch('time.time', return_value=1010.0):
                 result = await manager.download_hls("http://example.com/1.ts", "/tmp/output")
@@ -551,7 +555,8 @@ class TestDownloadManager:
             mock_download.assert_called_once_with(
                 "http://example.com/1.ts", 
                 "/nonexistent/path", 
-                "video.mp4"
+                "video.mp4",
+                force_restart=False
             )
 
     @pytest.mark.asyncio
@@ -577,7 +582,8 @@ class TestDownloadManager:
                 mock_download.assert_called_once_with(
                     "http://example.com/1.ts", 
                     str(output_dir), 
-                    "video.mp4"
+                    "video.mp4",
+                    force_restart=False
                 )
 
     @pytest.mark.asyncio
@@ -608,7 +614,8 @@ class TestDownloadManager:
                 mock_download.assert_called_once_with(
                     "http://example.com/1.ts", 
                     str(output_dir), 
-                    "video.mp4"
+                    "video.mp4",
+                    force_restart=False
                 )
 
 
@@ -628,7 +635,9 @@ async def test_download_manager_integration():
         # Mock all external dependencies
         with patch('src.hls_downloader.download_manager.HLSDetector') as mock_detector_class, \
              patch('src.hls_downloader.download_manager.AsyncDownloader') as mock_downloader_class, \
-             patch('src.hls_downloader.download_manager.ProgressDisplay') as mock_progress_class:
+             patch('src.hls_downloader.download_manager.ProgressDisplay') as mock_progress_class, \
+             patch('src.hls_downloader.download_manager.StateManager') as mock_state_manager_class, \
+             patch('src.hls_downloader.download_manager.ResumeValidator') as mock_resume_validator_class:
             
             # Setup mock detector
             mock_detector = AsyncMock()
@@ -660,8 +669,34 @@ async def test_download_manager_integration():
             mock_progress_class.return_value = mock_progress
             mock_progress.create_main_progress.return_value = MagicMock()
             
-            # Run the download
-            result = await manager.download_hls("http://example.com/1.ts", temp_dir)
+            # Setup mock state manager
+            mock_state_manager = MagicMock()
+            mock_state_manager_class.return_value = mock_state_manager
+            mock_state_manager.has_saved_state.return_value = False
+            mock_state_manager.create_initial_state.return_value = MagicMock()
+            
+            # Setup mock resume validator
+            mock_resume_validator = MagicMock()
+            mock_resume_validator_class.return_value = mock_resume_validator
+            mock_resume_validator.__aenter__ = AsyncMock(return_value=mock_resume_validator)
+            mock_resume_validator.__aexit__ = AsyncMock(return_value=None)
+            
+            # Manually set the manager's internal components to avoid initialization issues
+            manager._downloader = mock_downloader
+            manager._progress_display = mock_progress
+            manager._state_manager = mock_state_manager
+            manager._resume_validator = mock_resume_validator
+            
+            # Mock the resume method to return no resume
+            with patch.object(manager, '_check_and_handle_resume') as mock_resume_check:
+                mock_resume_check.return_value = {"resumed": False, "message": "Starting fresh"}
+                
+                # Mock the download segments with resume method
+                with patch.object(manager, '_download_segments_with_resume') as mock_download_resume:
+                    mock_download_resume.return_value = download_results
+                    
+                    # Run the download
+                    result = await manager.download_hls("http://example.com/1.ts", temp_dir)
             
             # Verify results
             assert result["success"] is True
@@ -672,7 +707,7 @@ async def test_download_manager_integration():
             
             # Verify components were called correctly
             mock_detector.detect_segments.assert_called_once_with("http://example.com/1.ts")
-            mock_downloader.download_segments.assert_called_once()
+            mock_download_resume.assert_called_once()
             
             # Verify output directory structure was created
             output_path = Path(temp_dir)

@@ -113,9 +113,9 @@ class TestArgumentParser:
     def test_parse_minimal_args(self):
         """Test parsing minimal required arguments."""
         parser = create_parser()
-        args = parser.parse_args(["https://example.com/segment{}.ts"])
+        args = parser.parse_args(["https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts"])
         
-        assert args.url == "https://example.com/segment{}.ts"
+        assert args.url == "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts"
         assert args.output == "./downloads"
         assert args.concurrent == 10
         assert args.retries == 3
@@ -125,7 +125,7 @@ class TestArgumentParser:
         """Test parsing all available arguments."""
         parser = create_parser()
         args = parser.parse_args([
-            "https://example.com/video_{}.ts",
+            "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts",
             "-o", "/tmp/output",
             "-c", "20",
             "-r", "5",
@@ -137,7 +137,7 @@ class TestArgumentParser:
             "--verbose",
         ])
         
-        assert args.url == "https://example.com/video_{}.ts"
+        assert args.url == "https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts"
         assert args.output == "/tmp/output"
         assert args.concurrent == 20
         assert args.retries == 5
@@ -237,7 +237,7 @@ class TestArgumentValidation:
             retries=3,
             timeout=30,
             chunk_size=8192,
-            url="https://example.com/segment{}.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts",
         )
         
         assert validate_arguments(args) is True
@@ -249,7 +249,7 @@ class TestArgumentValidation:
             retries=3,
             timeout=30,
             chunk_size=8192,
-            url="https://example.com/segment{}.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts",
         )
         
         assert validate_arguments(args) is False
@@ -263,7 +263,7 @@ class TestArgumentValidation:
             retries=-1,  # Invalid
             timeout=30,
             chunk_size=8192,
-            url="https://example.com/segment{}.ts",
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts",
         )
         
         assert validate_arguments(args) is False
@@ -277,7 +277,7 @@ class TestArgumentValidation:
             retries=3,
             timeout=30,
             chunk_size=8192,
-            url="https://example.com/segment.ts",  # Missing {} placeholder
+            url="https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/1.ts",  # Missing {} placeholder
         )
         
         assert validate_arguments(args) is False
@@ -383,13 +383,20 @@ class TestMainFunction:
         """Test main function with successful download."""
         # Mock the download manager
         mock_manager = Mock()
-        mock_manager.download_hls = AsyncMock()
+        mock_manager.download_hls = AsyncMock(return_value={
+            "success": True,
+            "resumed": False,
+            "total_segments": 10,
+            "successful_segments": 10,
+            "failed_segments": 0
+        })
+        mock_manager.has_resumable_download = Mock(return_value=False)
         mock_manager_class.return_value = mock_manager
         
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('sys.argv', [
                 'cli.py', 
-                'https://example.com/segment{}.ts',
+                'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts',
                 '-o', temp_dir
             ]):
                 await main()
@@ -410,7 +417,7 @@ class TestMainFunction:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('sys.argv', [
                 'cli.py', 
-                'https://example.com/segment{}.ts',
+                'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts',
                 '-o', temp_dir
             ]):
                 with pytest.raises(SystemExit) as exc_info:
@@ -433,7 +440,7 @@ class TestMainFunction:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('sys.argv', [
                 'cli.py', 
-                'https://example.com/segment{}.ts',
+                'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts',
                 '-o', temp_dir
             ]):
                 with pytest.raises(SystemExit) as exc_info:
@@ -450,13 +457,20 @@ class TestMainFunction:
         """Test main function with verbose output."""
         # Mock the download manager
         mock_manager = Mock()
-        mock_manager.download_hls = AsyncMock()
+        mock_manager.download_hls = AsyncMock(return_value={
+            "success": True,
+            "resumed": False,
+            "total_segments": 3,
+            "successful_segments": 3,
+            "failed_segments": 0
+        })
+        mock_manager.has_resumable_download = Mock(return_value=False)
         mock_manager_class.return_value = mock_manager
         
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('sys.argv', [
                 'cli.py', 
-                'https://example.com/segment{}.ts',
+                'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts',
                 '-o', temp_dir,
                 '--verbose'
             ]):
@@ -464,7 +478,7 @@ class TestMainFunction:
         
         captured = capsys.readouterr()
         assert "Starting download with configuration:" in captured.out
-        assert "Downloading from: https://example.com/segment{}.ts" in captured.out
+        assert "Downloading from: https://dh5wswx02.v.cntv.cn/asp/h5e/hls/1200/0303000a/3/default/6f3ab539680c4b359d857b4c73a824eb/{}.ts" in captured.out
 
 
 class TestIntegration:

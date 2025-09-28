@@ -142,6 +142,24 @@ Examples:
         help="Show current configuration and exit",
     )
 
+    # Resume options
+    resume_group = parser.add_argument_group('Resume Options')
+    resume_group.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume interrupted download in output directory",
+    )
+    resume_group.add_argument(
+        "--force-restart",
+        action="store_true",
+        help="Ignore existing state and start fresh download",
+    )
+    resume_group.add_argument(
+        "--check-resume",
+        action="store_true",
+        help="Check if there's a resumable download and show info",
+    )
+
     # Utility options
     parser.add_argument(
         "-v", "--verbose",
@@ -239,6 +257,46 @@ def show_config(config: DownloadConfig, config_path: Optional[Path] = None) -> N
             print("Status: Not found (using defaults)")
 
 
+def show_resume_info(output_dir: str, manager: DownloadManager) -> None:
+    """Display resume information for a directory."""
+    if not manager.has_resumable_download(output_dir):
+        print(f"No resumable download found in: {output_dir}")
+        return
+    
+    info = manager.get_resume_info(output_dir)
+    if not info:
+        print(f"Cannot read resume information from: {output_dir}")
+        return
+    
+    print("Resumable Download Found:")
+    print("=" * 50)
+    print(f"URL: {info['url']}")
+    print(f"Status: {info['status']}")
+    print(f"Total Segments: {info['total_segments']}")
+    print(f"Downloaded: {info['downloaded_segments']}")
+    print(f"Failed: {info['failed_segments']}")
+    
+    if info['total_segments'] > 0:
+        completion = (info['downloaded_segments'] / info['total_segments']) * 100
+        print(f"Completion: {completion:.1f}%")
+    
+    # Show timestamps if available
+    if info.get('created_at'):
+        import datetime
+        created = datetime.datetime.fromtimestamp(info['created_at'])
+        print(f"Created: {created.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    if info.get('updated_at'):
+        import datetime
+        updated = datetime.datetime.fromtimestamp(info['updated_at'])
+        print(f"Last Updated: {updated.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    if info.get('resume_count', 0) > 0:
+        print(f"Resume Count: {info['resume_count']}")
+    
+    print(f"\nTo resume: {sys.argv[0]} --resume -o \"{output_dir}\" \"{info['url']}\"")
+
+
 async def main() -> None:
     """Main entry point for CLI."""
     parser = create_parser()
@@ -259,6 +317,9 @@ async def main() -> None:
     except (TypeError, ValueError) as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
+    
+    # Initialize download manager for special commands that need it
+    manager = DownloadManager(config)
     
     # Handle special commands
     if args.show_config:
@@ -282,9 +343,29 @@ async def main() -> None:
             sys.exit(1)
         return
     
+    if args.check_resume:
+        show_resume_info(args.output, manager)
+        return
+    
     # Validate arguments
     if not validate_arguments(args):
         sys.exit(1)
+    
+    # Handle resume mode
+    if args.resume:
+        # For resume, try to get URL from existing state if not provided
+        if not args.url:
+            if manager.has_resumable_download(args.output):
+                resume_info = manager.get_resume_info(args.output)
+                if resume_info and resume_info.get('url'):
+                    args.url = resume_info['url']
+                    print(f"Resuming download: {args.url}")
+                else:
+                    print("Error: Cannot determine URL from existing state", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                print(f"Error: No resumable download found in {args.output}", file=sys.stderr)
+                sys.exit(1)
     
     # URL is required for download
     if not args.url:
@@ -300,22 +381,45 @@ async def main() -> None:
         print(f"Error creating output directory: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Initialize download manager and start download
-    manager = DownloadManager(config)
-
     try:
         if args.verbose:
             print(f"Starting download with configuration:")
             show_config(config)
             print(f"\nDownloading from: {args.url}")
             print(f"Output directory: {output_path}")
+            
+            # Show resume info if applicable
+            if args.resume and manager.has_resumable_download(str(output_path)):
+                print("\nResume Information:")
+                show_resume_info(str(output_path), manager)
+            
             print("-" * 50)
         
-        await manager.download_hls(args.url, str(output_path))
-        print("Download completed successfully!")
+        # Start download with appropriate resume settings
+        result = await manager.download_hls(
+            args.url, 
+            str(output_path),
+            force_restart=args.force_restart
+        )
+        
+        # Show results
+        if result.get("resumed"):
+            print(f"Download resumed and completed successfully!")
+            print(f"Resumed {result.get('existing_segments', 0)} existing segments")
+        else:
+            print("Download completed successfully!")
+        
+        if args.verbose:
+            print(f"Total segments: {result.get('total_segments', 0)}")
+            print(f"Successful: {result.get('successful_segments', 0)}")
+            if result.get('failed_segments', 0) > 0:
+                print(f"Failed: {result.get('failed_segments', 0)}")
+            if result.get('merged_video_path'):
+                print(f"Merged video: {result['merged_video_path']}")
         
     except KeyboardInterrupt:
         print("\nDownload interrupted by user", file=sys.stderr)
+        print("You can resume this download later using --resume option")
         sys.exit(130)  # Standard exit code for SIGINT
     except Exception as e:
         print(f"Download failed: {e}", file=sys.stderr)
