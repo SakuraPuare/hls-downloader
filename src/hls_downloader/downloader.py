@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import httpx
 
+from .error_handler import ErrorHandler, IntegrityError
 from .models import DownloadConfig, SegmentInfo
 
 
@@ -25,6 +26,10 @@ class AsyncDownloader:
         self.config = config
         self._client: Optional[httpx.AsyncClient] = None
         self._semaphore = asyncio.Semaphore(config.max_concurrent)
+        self._error_handler = ErrorHandler(
+            max_retries=config.max_retries,
+            base_delay=1.0
+        )
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -99,7 +104,7 @@ class AsyncDownloader:
         tasks = []
         for segment in segments:
             task = asyncio.create_task(
-                self._download_single_segment(segment, output_path)
+                self._download_single_segment_with_retry(segment, output_path)
             )
             tasks.append(task)
         
@@ -110,8 +115,9 @@ class AsyncDownloader:
         updated_segments = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"Failed to download segment {segments[i].index}: {result}")
+                # Error was already logged by error handler
                 segments[i].downloaded = False
+                updated_segments.append(segments[i])
             else:
                 updated_segments.append(result)
         
@@ -120,12 +126,12 @@ class AsyncDownloader:
         
         return updated_segments
 
-    async def _download_single_segment(
+    async def _download_single_segment_with_retry(
         self, 
         segment: SegmentInfo, 
         output_dir: Path
     ) -> SegmentInfo:
-        """Download a single segment with streaming support.
+        """Download a single segment with retry and resume support.
         
         Args:
             segment: Segment information to download
@@ -134,57 +140,95 @@ class AsyncDownloader:
         Returns:
             Updated segment information with download status
         """
+        async def download_operation():
+            return await self._download_single_segment(segment, output_dir)
+        
+        return await self._error_handler.handle_with_retry(
+            download_operation, segment
+        )
+
+    async def _download_single_segment(
+        self, 
+        segment: SegmentInfo, 
+        output_dir: Path
+    ) -> SegmentInfo:
+        """Download a single segment with streaming and resume support.
+        
+        Args:
+            segment: Segment information to download
+            output_dir: Directory to save the segment
+            
+        Returns:
+            Updated segment information with download status
+            
+        Raises:
+            Various exceptions that will be handled by the error handler
+        """
         async with self._semaphore:  # Control concurrency
             filepath = output_dir / segment.filename
             
-            try:
-                logger.debug(f"Starting download of segment {segment.index}: {segment.url}")
+            logger.debug(f"Starting download of segment {segment.index}: {segment.url}")
+            
+            # Check if file already exists (for resume support)
+            resume_from = 0
+            if filepath.exists():
+                existing_size = filepath.stat().st_size
+                if existing_size > 0:
+                    logger.debug(f"Found partial file for segment {segment.index}, resuming from byte {existing_size}")
+                    resume_from = existing_size
+            
+            # Prepare headers for resume support
+            headers = {}
+            if resume_from > 0:
+                headers['Range'] = f'bytes={resume_from}-'
+            
+            # Stream download to avoid loading entire file into memory
+            async with self._client.stream('GET', segment.url, headers=headers) as response:
+                response.raise_for_status()
                 
-                # Stream download to avoid loading entire file into memory
-                async with self._client.stream('GET', segment.url) as response:
-                    response.raise_for_status()
-                    
-                    # Get content length if available
-                    content_length = response.headers.get('content-length')
-                    if content_length:
-                        segment.size = int(content_length)
-                    
-                    # Stream content to file
-                    downloaded_bytes = 0
-                    with open(filepath, 'wb') as f:
-                        async for chunk in response.aiter_bytes(
-                            chunk_size=self.config.chunk_size
-                        ):
-                            f.write(chunk)
-                            downloaded_bytes += len(chunk)
-                    
-                    # Update segment info
-                    if not segment.size:
-                        segment.size = downloaded_bytes
-                    
-                    # Verify file integrity
-                    if await self._verify_file_integrity(filepath, segment):
-                        segment.downloaded = True
-                        logger.debug(
-                            f"Successfully downloaded segment {segment.index} "
-                            f"({segment.size} bytes)"
-                        )
+                # Handle partial content response
+                if resume_from > 0 and response.status_code == 206:
+                    logger.debug(f"Server supports resume for segment {segment.index}")
+                    file_mode = 'ab'  # Append mode for resume
+                elif resume_from > 0 and response.status_code == 200:
+                    logger.debug(f"Server doesn't support resume for segment {segment.index}, restarting download")
+                    file_mode = 'wb'  # Overwrite mode
+                    resume_from = 0
+                else:
+                    file_mode = 'wb'  # Normal download
+                
+                # Get content length if available
+                content_length = response.headers.get('content-length')
+                if content_length:
+                    total_size = int(content_length)
+                    if resume_from > 0 and response.status_code == 206:
+                        # For partial content, add the resume offset
+                        segment.size = resume_from + total_size
                     else:
-                        segment.downloaded = False
-                        logger.error(f"File integrity check failed for segment {segment.index}")
+                        segment.size = total_size
                 
-            except httpx.HTTPStatusError as e:
-                logger.error(
-                    f"HTTP error downloading segment {segment.index}: "
-                    f"{e.response.status_code} {e.response.reason_phrase}"
+                # Stream content to file
+                downloaded_bytes = resume_from
+                with open(filepath, file_mode) as f:
+                    async for chunk in response.aiter_bytes(
+                        chunk_size=self.config.chunk_size
+                    ):
+                        f.write(chunk)
+                        downloaded_bytes += len(chunk)
+                
+                # Update segment info
+                if not segment.size:
+                    segment.size = downloaded_bytes
+                
+                # Verify file integrity
+                await self._verify_file_integrity(filepath, segment)
+                
+                # If we get here, integrity check passed
+                segment.downloaded = True
+                logger.debug(
+                    f"Successfully downloaded segment {segment.index} "
+                    f"({segment.size} bytes)"
                 )
-                segment.downloaded = False
-            except httpx.RequestError as e:
-                logger.error(f"Request error downloading segment {segment.index}: {e}")
-                segment.downloaded = False
-            except Exception as e:
-                logger.error(f"Unexpected error downloading segment {segment.index}: {e}")
-                segment.downloaded = False
             
             return segment
 
@@ -192,21 +236,23 @@ class AsyncDownloader:
         self, 
         filepath: Path, 
         segment: SegmentInfo
-    ) -> bool:
+    ) -> None:
         """Verify downloaded file integrity.
         
         Args:
             filepath: Path to the downloaded file
             segment: Segment information for verification
             
-        Returns:
-            True if file integrity is verified, False otherwise
+        Raises:
+            IntegrityError: If file integrity check fails
         """
         try:
             # Check if file exists
             if not filepath.exists():
-                logger.error(f"Downloaded file does not exist: {filepath}")
-                return False
+                raise IntegrityError(
+                    f"Downloaded file does not exist: {filepath}",
+                    segment=segment
+                )
             
             # Check file size
             actual_size = filepath.stat().st_size
@@ -214,38 +260,50 @@ class AsyncDownloader:
             # If we don't have expected size, just check file is not empty
             if segment.size is None:
                 if actual_size == 0:
-                    logger.error(f"Downloaded file is empty: {filepath}")
-                    return False
+                    raise IntegrityError(
+                        f"Downloaded file is empty: {filepath}",
+                        segment=segment
+                    )
                 # Update segment size with actual size
                 segment.size = actual_size
-                return True
+                return
             
-            # Verify size matches expected
+            # Verify size matches expected (with small tolerance for resume downloads)
             if actual_size != segment.size:
-                logger.error(
-                    f"File size mismatch for {filepath}: "
-                    f"expected {segment.size}, got {actual_size}"
-                )
-                return False
+                # Allow small tolerance for resume downloads
+                size_tolerance = max(1, int(segment.size * 0.01))  # 1% or at least 1 byte
+                if abs(actual_size - segment.size) > size_tolerance:
+                    raise IntegrityError(
+                        f"File size mismatch for {filepath}: "
+                        f"expected {segment.size}, got {actual_size}",
+                        segment=segment
+                    )
+            
+            # Update segment size with actual size if within tolerance
+            segment.size = actual_size
             
             # Additional integrity checks could be added here
             # (e.g., checksum verification if provided by server)
             
-            return True
-            
+        except IntegrityError:
+            # Re-raise integrity errors
+            raise
         except Exception as e:
-            logger.error(f"Error verifying file integrity for {filepath}: {e}")
-            return False
+            # Convert other exceptions to integrity errors
+            raise IntegrityError(
+                f"Error verifying file integrity for {filepath}: {e}",
+                segment=segment
+            ) from e
 
     async def download_single_segment_with_retry(
         self, 
         segment: SegmentInfo, 
         output_dir: str
     ) -> SegmentInfo:
-        """Download a single segment with retry logic (for future use).
+        """Download a single segment with retry logic.
         
         This method provides a public interface for downloading individual segments
-        with built-in retry capabilities.
+        with built-in retry capabilities and resume support.
         
         Args:
             segment: Segment information to download
@@ -260,4 +318,12 @@ class AsyncDownloader:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
-        return await self._download_single_segment(segment, output_path)
+        return await self._download_single_segment_with_retry(segment, output_path)
+    
+    def get_error_summary(self) -> dict:
+        """Get summary of download errors encountered.
+        
+        Returns:
+            Dictionary with error statistics and details
+        """
+        return self._error_handler.get_error_summary()
