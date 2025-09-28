@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.hls_downloader.error_handler import (
+from src.hls_downloader.utils.error_handler import (
     DownloadError,
     ErrorType,
     FileSystemError,
@@ -13,8 +13,8 @@ from src.hls_downloader.error_handler import (
     NetworkError,
     TimeoutError,
 )
-from src.hls_downloader.models import SegmentInfo
-from src.hls_downloader.user_messages import (
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.utils.user_messages import (
     UserMessageDisplay,
     display_completion_info,
     display_progress_info,

@@ -7,8 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from src.hls_downloader.models import DownloadConfig, DownloadStats, SegmentInfo
-from src.hls_downloader.state_manager import DownloadState, StateManager
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.models.state import DownloadState
+from src.hls_downloader.core.state_manager import StateManager
 
 
 class TestStateManager:

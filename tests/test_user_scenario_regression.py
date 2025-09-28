@@ -13,9 +13,12 @@ import pytest
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
 
-from src.hls_downloader.download_manager import DownloadManager
-from src.hls_downloader.models import DownloadConfig, SegmentInfo
-from src.hls_downloader.state_manager import StateManager
+from src.hls_downloader.core.manager import DownloadManager
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.core.state_manager import StateManager
 
 
 class TestBasicUserScenarios:

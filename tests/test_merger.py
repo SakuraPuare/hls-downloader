@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.hls_downloader.merger import (
+from src.hls_downloader.core.merger import VideoMerger
+from src.hls_downloader.exceptions.merger import (
     FFmpegNotFoundError,
     MergeError,
-    VideoMerger,
     VideoMergerError,
 )
 

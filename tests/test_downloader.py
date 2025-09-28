@@ -7,9 +7,12 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from src.hls_downloader.downloader import AsyncDownloader
-from src.hls_downloader.error_handler import IntegrityError
-from src.hls_downloader.models import DownloadConfig, SegmentInfo
+from src.hls_downloader.core.downloader import AsyncDownloader
+from src.hls_downloader.exceptions.download import IntegrityError
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class TestAsyncDownloader:

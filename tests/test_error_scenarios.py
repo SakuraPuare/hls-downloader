@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 
-from src.hls_downloader.error_handler import (
+from src.hls_downloader.utils.error_handler import (
     DownloadError,
     ErrorHandler,
     ErrorType,
@@ -17,7 +17,7 @@ from src.hls_downloader.error_handler import (
     RetryStrategy,
     TimeoutError,
 )
-from src.hls_downloader.models import SegmentInfo
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class TestErrorScenarios:

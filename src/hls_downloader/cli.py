@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from .download_manager import DownloadManager
-from .logging_config import LoggingConfig
-from .models import DownloadConfig
-from .user_messages import UserMessageDisplay, show_info, show_success, show_user_error
+from .core.manager import DownloadManager
+from .models.config import DownloadConfig
+from .utils.logging_config import LoggingConfig
+from .utils.user_messages import UserMessageDisplay, show_info, show_success, show_user_error
 
 
 def load_config_file(config_path: Path) -> dict[str, Any]:

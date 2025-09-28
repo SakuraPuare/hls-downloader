@@ -7,13 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.hls_downloader.download_manager import (
-    ConfigurationError,
-    DownloadManager,
-    DownloadManagerError,
-)
-from src.hls_downloader.merger import FFmpegNotFoundError
-from src.hls_downloader.models import DownloadConfig, DownloadStats, SegmentInfo
+from src.hls_downloader.core.manager import DownloadManager
+from src.hls_downloader.exceptions.manager import ConfigurationError, DownloadManagerError
+from src.hls_downloader.exceptions.merger import FFmpegNotFoundError
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class TestDownloadManager:

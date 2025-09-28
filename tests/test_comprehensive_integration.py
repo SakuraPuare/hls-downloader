@@ -13,8 +13,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.hls_downloader.download_manager import DownloadManager
-from src.hls_downloader.models import DownloadConfig, SegmentInfo
+from src.hls_downloader.core.manager import DownloadManager
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class TestEndToEndDownload:

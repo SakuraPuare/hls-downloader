@@ -7,10 +7,11 @@ from typing import Optional
 from tqdm import tqdm
 from tqdm.contrib.concurrent import thread_map
 
-from .models import DownloadStats
+from ..interfaces.progress import ProgressInterface
+from ..models.stats import DownloadStats
 
 
-class ProgressDisplay:
+class ProgressDisplay(ProgressInterface):
     """Modern progress display system with main and worker progress bars."""
 
     def __init__(self):
@@ -137,6 +138,27 @@ class ProgressDisplay:
                 worker_progress = self._worker_progresses[worker_id]
                 worker_progress.close()
                 del self._worker_progresses[worker_id]
+
+    def create_progress_bar(self, total: int, description: str = "") -> None:
+        """Create a progress bar.
+        
+        Args:
+            total: Total number of items
+            description: Description for the progress bar
+        """
+        self.create_main_progress(total, description or "总体进度")
+    
+    def update_progress(self, increment: int = 1) -> None:
+        """Update progress by increment.
+        
+        Args:
+            increment: Amount to increment progress
+        """
+        self.update_main_progress(increment)
+    
+    def close(self) -> None:
+        """Close and clean up the progress display."""
+        self.close_all_progress()
 
     def update_stats(self, stats: DownloadStats) -> None:
         """

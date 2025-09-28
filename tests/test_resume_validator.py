@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.hls_downloader.models import SegmentInfo
-from src.hls_downloader.resume_validator import ResumeValidator
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.utils.resume_validator import ResumeValidator
 
 
 class TestResumeValidator:

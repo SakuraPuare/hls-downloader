@@ -25,10 +25,13 @@ except ImportError:
     PSUTIL_AVAILABLE = False
     psutil = None
 
-from src.hls_downloader.detector import HLSDetector
-from src.hls_downloader.download_manager import DownloadManager
-from src.hls_downloader.downloader import AsyncDownloader
-from src.hls_downloader.models import DownloadConfig, SegmentInfo
+from src.hls_downloader.core.detector import HLSDetector
+from src.hls_downloader.core.manager import DownloadManager
+from src.hls_downloader.core.downloader import AsyncDownloader
+from src.hls_downloader.models.config import DownloadConfig
+from src.hls_downloader.models.segment import SegmentInfo
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class PerformanceMetrics:

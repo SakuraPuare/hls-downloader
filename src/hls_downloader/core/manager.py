@@ -5,27 +5,20 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from ..exceptions.manager import ConfigurationError, DownloadManagerError
+from ..exceptions.merger import FFmpegNotFoundError, VideoMergerError
+from ..models.config import DownloadConfig
+from ..models.stats import DownloadStats
+from ..models.segment import SegmentInfo
+from ..models.state import DownloadState
 from .detector import HLSDetector
 from .downloader import AsyncDownloader
-from .merger import FFmpegNotFoundError, VideoMerger, VideoMergerError
-from .models import DownloadConfig, DownloadStats, SegmentInfo
-from .progress_display import ProgressDisplay
-from .resume_validator import ResumeValidator
-from .state_manager import DownloadState, StateManager
+from .merger import VideoMerger
+from .progress import ProgressDisplay
+from .state_manager import StateManager
+from ..utils.resume_validator import ResumeValidator
 
 logger = logging.getLogger(__name__)
-
-
-class DownloadManagerError(Exception):
-    """Base exception for download manager errors."""
-
-    pass
-
-
-class ConfigurationError(DownloadManagerError):
-    """Raised when configuration is invalid."""
-
-    pass
 
 
 class DownloadManager:

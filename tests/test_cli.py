@@ -18,7 +18,7 @@ from src.hls_downloader.cli import (
     show_config,
     validate_arguments,
 )
-from src.hls_downloader.models import DownloadConfig
+from src.hls_downloader.models.config import DownloadConfig
 
 
 class TestConfigFileOperations:

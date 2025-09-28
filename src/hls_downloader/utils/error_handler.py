@@ -9,7 +9,7 @@ from typing import Any, Optional
 import httpx
 from loguru import logger
 
-from .models import SegmentInfo
+from ..models.segment import SegmentInfo
 
 
 class ErrorType(Enum):

@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.hls_downloader.detector import CacheEntry, HLSDetector
-from src.hls_downloader.models import SegmentInfo
+from src.hls_downloader.core.detector import CacheEntry
+from src.hls_downloader.core.detector import HLSDetector
+from src.hls_downloader.models.segment import SegmentInfo
 
 
 class TestHLSDetector:

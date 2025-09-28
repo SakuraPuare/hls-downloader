@@ -4,8 +4,8 @@ import time
 from threading import Thread
 from unittest.mock import patch
 
-from src.hls_downloader.models import DownloadStats
-from src.hls_downloader.progress_display import (
+from src.hls_downloader.models.stats import DownloadStats
+from src.hls_downloader.core.progress import (
     MultiThreadProgressWrapper,
     ProgressDisplay,
 )
@@ -320,7 +320,7 @@ class TestMultiThreadProgressWrapper:
         """Clean up after tests."""
         self.progress_display.close_all_progress()
 
-    @patch("src.hls_downloader.progress_display.thread_map")
+    @patch("src.hls_downloader.core.progress.thread_map")
     def test_map_function(self, mock_thread_map):
         """Test the map function wrapper."""
         mock_thread_map.return_value = [1, 2, 3, 4, 5]
@@ -344,7 +344,7 @@ class TestMultiThreadProgressWrapper:
 
         assert result == [1, 2, 3, 4, 5]
 
-    @patch("src.hls_downloader.progress_display.thread_map")
+    @patch("src.hls_downloader.core.progress.thread_map")
     def test_map_function_with_custom_desc(self, mock_thread_map):
         """Test the map function with custom description."""
         mock_thread_map.return_value = []

@@ -6,6 +6,7 @@ from typing import Any, Optional
 from loguru import logger
 
 from .error_handler import DownloadError, ErrorType, HTTPError
+from ..models.stats import DownloadStats
 
 
 class UserMessageDisplay:

@@ -9,13 +9,17 @@ from typing import Any, Optional
 
 import httpx
 
-from .error_handler import ErrorHandler, IntegrityError
-from .models import DownloadConfig, DownloadStats, SegmentInfo
+from ..exceptions.download import IntegrityError
+from ..interfaces.downloader import DownloaderInterface
+from ..models.config import DownloadConfig
+from ..models.stats import DownloadStats
+from ..models.segment import SegmentInfo
+from ..utils.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncDownloader:
+class AsyncDownloader(DownloaderInterface):
     """Async downloader for HLS segments with concurrent download control and monitoring."""
 
     def __init__(self, config: DownloadConfig):
@@ -178,6 +182,23 @@ class AsyncDownloader:
             return await self._download_single_segment(segment, output_dir)
 
         return await self._error_handler.handle_with_retry(download_operation, segment)
+
+    async def download_segment(self, segment: SegmentInfo, output_path: Path) -> bool:
+        """Download a single segment.
+        
+        Args:
+            segment: Segment to download
+            output_path: Path to save the segment
+            
+        Returns:
+            True if download successful
+        """
+        try:
+            output_dir = output_path.parent
+            downloaded_segment = await self._download_single_segment_with_retry(segment, output_dir)
+            return downloaded_segment.downloaded
+        except Exception:
+            return False
 
     async def _download_single_segment(
         self, segment: SegmentInfo, output_dir: Path

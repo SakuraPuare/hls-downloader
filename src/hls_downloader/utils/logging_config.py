@@ -296,3 +296,31 @@ def log_error_summary(error_summary: dict[str, Any]) -> None:
         logger.bind(event="error_summary", **error_summary).info(
             "Download completed without errors"
         )
+
+
+def configure_logging(
+    level: str = "INFO",
+    debug_mode: bool = False,
+    log_file: Optional[Path] = None,
+    structured_logging: bool = False,
+) -> None:
+    """Configure logging with the specified parameters.
+    
+    Args:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        debug_mode: Enable debug mode with verbose output
+        log_file: Optional log file path
+        structured_logging: Enable structured JSON logging
+    """
+    config = LoggingConfig(
+        level=level,
+        debug_mode=debug_mode,
+        log_file=log_file,
+        structured_logging=structured_logging,
+    )
+    config.setup_logging()
+
+
+def setup_test_logging() -> None:
+    """Setup logging for test environment."""
+    configure_logging(level="DEBUG", debug_mode=True)

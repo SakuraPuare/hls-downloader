@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 
-from .models import SegmentInfo
+from ..models.segment import SegmentInfo
 
 logger = logging.getLogger(__name__)
 

@@ -9,28 +9,13 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from ..exceptions.merger import FFmpegNotFoundError, MergeError, VideoMergerError
+from ..interfaces.merger import MergerInterface
+
 logger = logging.getLogger(__name__)
 
 
-class VideoMergerError(Exception):
-    """Base exception for video merger errors."""
-
-    pass
-
-
-class FFmpegNotFoundError(VideoMergerError):
-    """Raised when ffmpeg is not available."""
-
-    pass
-
-
-class MergeError(VideoMergerError):
-    """Raised when video merge operation fails."""
-
-    pass
-
-
-class VideoMerger:
+class VideoMerger(MergerInterface):
     """Video merger for combining HLS segments using ffmpeg."""
 
     def __init__(self):

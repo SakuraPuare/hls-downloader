@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.hls_downloader.logging_config import (
+from src.hls_downloader.utils.logging_config import (
     LoggingConfig,
     get_logger,
     log_download_complete,

@@ -9,7 +9,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from .models import SegmentInfo
+from ..models.segment import SegmentInfo
+from ..interfaces.detector import DetectorInterface
 
 
 @dataclass
@@ -24,7 +25,7 @@ class CacheEntry:
         return time() - self.timestamp > ttl
 
 
-class HLSDetector:
+class HLSDetector(DetectorInterface):
     """Detector for HLS segments using binary search optimization."""
 
     def __init__(
@@ -494,7 +495,18 @@ class HLSDetector:
 
         return max_valid
 
-    async def detect_segments(self, url_template: str) -> list[SegmentInfo]:
+    async def check_segment_exists(self, url: str) -> bool:
+        """Check if a single segment exists.
+        
+        Args:
+            url: Segment URL to check
+            
+        Returns:
+            True if segment exists
+        """
+        return await self._check_segment_exists(url)
+    
+    async def detect_segments(self, url_template: str, start_index: int = 1) -> list[SegmentInfo]:
         """Detect all available HLS segments from a template URL.
 
         Args:
@@ -521,7 +533,7 @@ class HLSDetector:
 
         # Generate segment info for all valid segments
         segments = []
-        for i in range(1, max_index + 1):
+        for i in range(start_index, max_index + 1):
             url = self._generate_segment_url(base_url, pattern, i)
             filename = f"segment_{i:06d}.{extension}"
             segment = SegmentInfo(url=url, index=i, filename=filename)

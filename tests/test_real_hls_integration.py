@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.hls_downloader.detector import HLSDetector
+from src.hls_downloader.core.detector import HLSDetector
 
 
 class TestRealHLSIntegration:
