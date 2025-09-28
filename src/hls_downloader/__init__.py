@@ -7,6 +7,7 @@ __email__ = "team@hlsdownloader.dev"
 from .download_manager import DownloadManager
 from .detector import HLSDetector
 from .models import DownloadConfig, DownloadStats, SegmentInfo
+from .progress_display import ProgressDisplay, MultiThreadProgressWrapper
 
 __all__ = [
     "DownloadManager",
@@ -14,4 +15,6 @@ __all__ = [
     "DownloadConfig",
     "SegmentInfo",
     "DownloadStats",
+    "ProgressDisplay",
+    "MultiThreadProgressWrapper",
 ]

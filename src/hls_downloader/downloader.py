@@ -2,20 +2,22 @@
 
 import asyncio
 import logging
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from collections import deque
 
 import httpx
 
 from .error_handler import ErrorHandler, IntegrityError
-from .models import DownloadConfig, SegmentInfo
+from .models import DownloadConfig, SegmentInfo, DownloadStats
 
 
 logger = logging.getLogger(__name__)
 
 
 class AsyncDownloader:
-    """Async downloader for HLS segments with concurrent download support."""
+    """Async downloader for HLS segments with concurrent download control and monitoring."""
 
     def __init__(self, config: DownloadConfig):
         """Initialize the async downloader with configuration.
@@ -30,6 +32,23 @@ class AsyncDownloader:
             max_retries=config.max_retries,
             base_delay=1.0
         )
+        
+        # Download statistics and monitoring
+        self._stats = DownloadStats(total_segments=0)
+        self._download_speeds = deque(maxlen=10)  # Keep last 10 speed measurements
+        self._active_downloads = 0
+        self._download_lock = asyncio.Lock()
+        
+        # Task queue management
+        self._download_queue: asyncio.Queue = asyncio.Queue()
+        self._completed_segments: List[SegmentInfo] = []
+        self._failed_segments: List[SegmentInfo] = []
+        
+        # Adaptive concurrency control
+        self._adaptive_concurrency = config.max_concurrent
+        self._performance_window = deque(maxlen=5)  # Track performance over 5 measurements
+        self._last_adjustment_time = 0.0
+        self._adjustment_interval = 30.0  # Adjust every 30 seconds
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -82,7 +101,7 @@ class AsyncDownloader:
         segments: List[SegmentInfo], 
         output_dir: str
     ) -> List[SegmentInfo]:
-        """Download multiple segments concurrently.
+        """Download multiple segments concurrently with monitoring and adaptive control.
         
         Args:
             segments: List of segment information to download
@@ -94,37 +113,61 @@ class AsyncDownloader:
         if not self._client:
             raise RuntimeError("Client not initialized. Use async context manager.")
         
+        # Initialize statistics
+        self._stats = DownloadStats(
+            total_segments=len(segments),
+            start_time=time.time()
+        )
+        self._completed_segments.clear()
+        self._failed_segments.clear()
+        
         # Ensure output directory exists
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"Starting download of {len(segments)} segments to {output_dir}")
         
-        # Create download tasks for all segments
-        tasks = []
-        for segment in segments:
-            task = asyncio.create_task(
-                self._download_single_segment_with_retry(segment, output_path)
+        # Use task queue for better control
+        await self._populate_download_queue(segments)
+        
+        # Start download workers with adaptive concurrency
+        workers = []
+        for worker_id in range(self._adaptive_concurrency):
+            worker = asyncio.create_task(
+                self._download_worker(worker_id, output_path)
             )
-            tasks.append(task)
+            workers.append(worker)
+        
+        # Start monitoring task
+        monitor_task = asyncio.create_task(self._monitor_and_adjust())
         
         # Wait for all downloads to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        await self._download_queue.join()
         
-        # Process results and update segment info
-        updated_segments = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                # Error was already logged by error handler
-                segments[i].downloaded = False
-                updated_segments.append(segments[i])
-            else:
-                updated_segments.append(result)
+        # Cancel monitoring and workers
+        monitor_task.cancel()
+        for worker in workers:
+            worker.cancel()
         
-        successful_downloads = len([s for s in updated_segments if s.downloaded])
-        logger.info(f"Download completed: {successful_downloads}/{len(segments)} successful")
+        # Wait for workers to finish
+        await asyncio.gather(*workers, monitor_task, return_exceptions=True)
         
-        return updated_segments
+        # Combine results
+        all_segments = self._completed_segments + self._failed_segments
+        
+        # Update final statistics
+        self._stats.downloaded_segments = len(self._completed_segments)
+        self._stats.failed_segments = len(self._failed_segments)
+        elapsed_time = time.time() - self._stats.start_time
+        self._stats.update_speed(elapsed_time)
+        
+        logger.info(
+            f"Download completed: {self._stats.downloaded_segments}/"
+            f"{self._stats.total_segments} successful "
+            f"(avg speed: {self._stats.average_speed:.2f} bytes/s)"
+        )
+        
+        return all_segments
 
     async def _download_single_segment_with_retry(
         self, 
@@ -327,3 +370,188 @@ class AsyncDownloader:
             Dictionary with error statistics and details
         """
         return self._error_handler.get_error_summary()
+    
+    async def _populate_download_queue(self, segments: List[SegmentInfo]) -> None:
+        """Populate the download queue with segments.
+        
+        Args:
+            segments: List of segments to add to the queue
+        """
+        for segment in segments:
+            await self._download_queue.put(segment)
+    
+    async def _download_worker(self, worker_id: int, output_dir: Path) -> None:
+        """Worker task for processing download queue.
+        
+        Args:
+            worker_id: Unique identifier for this worker
+            output_dir: Directory to save downloaded segments
+        """
+        logger.debug(f"Download worker {worker_id} started")
+        
+        try:
+            while True:
+                try:
+                    # Get next segment from queue with timeout
+                    segment = await asyncio.wait_for(
+                        self._download_queue.get(), timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    # Check if there are more segments to process
+                    if self._download_queue.empty():
+                        break
+                    continue
+                
+                # Track active downloads
+                async with self._download_lock:
+                    self._active_downloads += 1
+                
+                try:
+                    # Download the segment with speed tracking
+                    start_time = time.time()
+                    result = await self._download_single_segment_with_retry(
+                        segment, output_dir
+                    )
+                    end_time = time.time()
+                    
+                    # Calculate download speed
+                    if result.size and result.downloaded:
+                        download_time = end_time - start_time
+                        if download_time > 0:
+                            speed = result.size / download_time
+                            self._download_speeds.append(speed)
+                    
+                    # Update statistics and results
+                    async with self._download_lock:
+                        if result.downloaded:
+                            self._completed_segments.append(result)
+                            self._stats.downloaded_segments += 1
+                            self._stats.downloaded_bytes += result.size or 0
+                        else:
+                            self._failed_segments.append(result)
+                            self._stats.failed_segments += 1
+                        
+                        self._active_downloads -= 1
+                
+                except Exception as e:
+                    logger.error(f"Worker {worker_id} error processing segment {segment.index}: {e}")
+                    segment.downloaded = False
+                    async with self._download_lock:
+                        self._failed_segments.append(segment)
+                        self._stats.failed_segments += 1
+                        self._active_downloads -= 1
+                
+                finally:
+                    # Mark task as done
+                    self._download_queue.task_done()
+        
+        except asyncio.CancelledError:
+            logger.debug(f"Download worker {worker_id} cancelled")
+        
+        logger.debug(f"Download worker {worker_id} finished")
+    
+    async def _monitor_and_adjust(self) -> None:
+        """Monitor download performance and adjust concurrency adaptively."""
+        logger.debug("Starting download monitoring and adaptive adjustment")
+        
+        try:
+            while True:
+                await asyncio.sleep(5.0)  # Monitor every 5 seconds
+                
+                current_time = time.time()
+                
+                # Calculate current performance metrics
+                if len(self._download_speeds) >= 3:  # Need some data points
+                    avg_speed = sum(self._download_speeds) / len(self._download_speeds)
+                    self._performance_window.append(avg_speed)
+                    
+                    # Adjust concurrency if enough time has passed
+                    if (current_time - self._last_adjustment_time) >= self._adjustment_interval:
+                        await self._adjust_concurrency()
+                        self._last_adjustment_time = current_time
+                
+                # Log current status
+                async with self._download_lock:
+                    logger.debug(
+                        f"Download status: {self._stats.downloaded_segments}/"
+                        f"{self._stats.total_segments} completed, "
+                        f"{self._active_downloads} active, "
+                        f"concurrency: {self._adaptive_concurrency}"
+                    )
+        
+        except asyncio.CancelledError:
+            logger.debug("Download monitoring cancelled")
+    
+    async def _adjust_concurrency(self) -> None:
+        """Adjust concurrency based on performance metrics."""
+        if len(self._performance_window) < 3:
+            return  # Not enough data
+        
+        # Calculate performance trend
+        recent_speeds = list(self._performance_window)[-3:]
+        if len(recent_speeds) < 3:
+            return
+        
+        # Simple trend analysis: compare first half with second half
+        first_half_avg = sum(recent_speeds[:2]) / 2
+        second_half_avg = recent_speeds[-1]
+        
+        performance_ratio = second_half_avg / first_half_avg if first_half_avg > 0 else 1.0
+        
+        old_concurrency = self._adaptive_concurrency
+        
+        # Adjust based on performance trend
+        if performance_ratio > 1.1:  # Performance improving
+            # Increase concurrency if not at maximum
+            if self._adaptive_concurrency < self.config.max_concurrent:
+                self._adaptive_concurrency = min(
+                    self._adaptive_concurrency + 1,
+                    self.config.max_concurrent
+                )
+        elif performance_ratio < 0.9:  # Performance degrading
+            # Decrease concurrency if not at minimum
+            if self._adaptive_concurrency > 2:
+                self._adaptive_concurrency = max(
+                    self._adaptive_concurrency - 1,
+                    2
+                )
+        
+        if self._adaptive_concurrency != old_concurrency:
+            logger.info(
+                f"Adjusted concurrency from {old_concurrency} to "
+                f"{self._adaptive_concurrency} (performance ratio: {performance_ratio:.2f})"
+            )
+            
+            # Update semaphore (create new one with new limit)
+            self._semaphore = asyncio.Semaphore(self._adaptive_concurrency)
+    
+    def get_download_stats(self) -> DownloadStats:
+        """Get current download statistics.
+        
+        Returns:
+            Current download statistics
+        """
+        # Update average speed if we have recent measurements
+        if self._download_speeds:
+            current_avg_speed = sum(self._download_speeds) / len(self._download_speeds)
+            self._stats.average_speed = current_avg_speed
+        
+        return self._stats
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get detailed performance metrics.
+        
+        Returns:
+            Dictionary with performance metrics
+        """
+        return {
+            "adaptive_concurrency": self._adaptive_concurrency,
+            "max_concurrency": self.config.max_concurrent,
+            "active_downloads": self._active_downloads,
+            "recent_speeds": list(self._download_speeds),
+            "average_speed": sum(self._download_speeds) / len(self._download_speeds) if self._download_speeds else 0.0,
+            "performance_window": list(self._performance_window),
+            "queue_size": self._download_queue.qsize(),
+            "completed_count": len(self._completed_segments),
+            "failed_count": len(self._failed_segments)
+        }
